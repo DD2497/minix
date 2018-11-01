@@ -1,0 +1,12 @@
+version: '3'
+
+services: 
+  minix-builder: 
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    volumes: 
+      - .:/minix
+    command: ./releasetools/x86_hdimage.sh
+    stdin_open: true
+
