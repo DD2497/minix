@@ -10,6 +10,6 @@ RUN apt-get update  \
     zlib1g          \
     zlib1g-dev      \ 
     g++             \
-    && mkdir /minix
+    && mkdir /workspace
 
-WORKDIR /minix    
+WORKDIR /workspace
