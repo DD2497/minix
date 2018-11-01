@@ -7,6 +7,6 @@ services:
       dockerfile: Dockerfile
     volumes: 
       - ..:/workspace
-    command: bash -c "cd workspace && ./releasetools/x86_hdimage.sh" 
+    command: bash -c "cd minix && ./releasetools/x86_hdimage.sh" 
     stdin_open: true
 
