@@ -4,3 +4,4 @@
 ## Created by:
 * Michael Chlebek
 * Kristian Alvarez
+* Niklas Reje
