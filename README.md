@@ -5,3 +5,4 @@
 * Michael Chlebek
 * Kristian Alvarez
 * Niklas Reje
+* Vidar Palmér
