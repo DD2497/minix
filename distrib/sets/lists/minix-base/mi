@@ -194,6 +194,7 @@
 ./etc/syslog.conf                                       minix-base
 ./etc/system.conf                                       minix-base
 ./etc/system.conf.d                                     minix-base
+./etc/system.conf.d/groupdriver                         minix-base
 ./etc/system.conf.d/hello                               minix-base
 ./etc/system.conf.d/inet                                minix-base      obsolete
 ./etc/system.conf.d/ipc                                 minix-base
@@ -274,6 +275,7 @@
 ./service/devman                                        minix-base
 ./service/ds                                            minix-base
 ./service/ext2                                          minix-base
+./service/groupdriver                                   minix-base
 ./service/hello                                         minix-base
 ./service/inet                                          minix-base      obsolete
 ./service/input                                         minix-base
@@ -283,10 +285,10 @@
 ./service/log                                           minix-base
 ./service/lwip                                          minix-base
 ./service/memory                                        minix-base
-./service/mydriver                                      minix-base
-./service/myserver                                      minix-base
 ./service/mfs                                           minix-base
 ./service/mib                                           minix-base
+./service/mydriver                                      minix-base
+./service/myserver                                      minix-base
 ./service/pfs                                           minix-base
 ./service/pm                                            minix-base
 ./service/procfs                                        minix-base
