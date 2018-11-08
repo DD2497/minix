@@ -117,7 +117,7 @@ static int vm_debug(endpoint_t ep)
 }
 
 int group_number;
-const char*[] group_members =
+char* group_members[] =
 {
     "Kristian Alvarez Jörgensen", 
     "Michael Chlebek", 
@@ -182,7 +182,7 @@ static ssize_t groupdriver_write(devminor_t UNUSED(minor), u64_t position,
     printf("groupdriver: warning: couldn't copy data %d\n", r);
     return OK;
   }
-  printf("received=%s\n", input_char);
+  printf("received=%c\n", input_char);
 
   if (input_char > '0' && input_char <= '4') { 
       group_number = (int) (input_char - '1'); 
