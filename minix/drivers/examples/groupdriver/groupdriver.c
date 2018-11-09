@@ -116,21 +116,18 @@ static int vm_debug(endpoint_t ep)
   return(result);
 }
 
-int group_number;
+int group_number = 0;
 char* group_members[] =
 {
-    "Kristian Alvarez Jörgensen", 
-    "Michael Chlebek", 
-    "Niklas Reje",
-    "Vidar Palmér"
+    "Kristian Alvarez Jorgensen\n", //örgensen", 
+    "Michael Chlebek\n", 
+    "Niklas Reje\n",
+    "Vidar Palmer\n" //ér"
 };
     
 static int groupdriver_open(devminor_t UNUSED(minor), int UNUSED(access),
                       endpoint_t UNUSED(user_endpt))
 {
-  group_number = 0;
-  printf("groupdriver_open(). Called %d time(s).\n", ++open_counter);
-
   myserver_sys1();
   return OK;
 }
@@ -149,8 +146,6 @@ static ssize_t groupdriver_read(devminor_t UNUSED(minor), u64_t position,
   char *ptr;
   int ret;
   char *buf = group_members[group_number];
- 
-  printf("groupdriver_read()\n");
  
   /* This is the total size of our device. */
   dev_size = (u64_t) strlen(buf);
@@ -174,15 +169,13 @@ static ssize_t groupdriver_write(devminor_t UNUSED(minor), u64_t position,
 			  cdev_id_t UNUSED(id))
 {
   int r;
-  printf("hello_write(position=%llu, size=%zu)\n", position, size);
   size = (size_t) 1; 
   char input_char; 
-  r = sys_safecopyfrom(endpt, grant, 0, (vir_bytes) (input_char), size);
+  r = sys_safecopyfrom(endpt, grant, 0, (vir_bytes) (&input_char), size);
   if (r != OK) {
     printf("groupdriver: warning: couldn't copy data %d\n", r);
     return OK;
   }
-  printf("received=%c\n", input_char);
 
   if (input_char > '0' && input_char <= '4') { 
       group_number = (int) (input_char - '1'); 
