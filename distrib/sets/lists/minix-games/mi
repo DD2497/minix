@@ -22,6 +22,7 @@
 ./usr/games/fish                                        minix-games
 ./usr/games/fortune                                     minix-games
 ./usr/games/hide                                        minix-games
+./usr/games/menu                                        minix-games
 ./usr/games/monop                                       minix-games
 ./usr/games/morse                                       minix-games
 ./usr/games/number                                      minix-games

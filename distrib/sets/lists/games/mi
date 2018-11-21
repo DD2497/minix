@@ -66,6 +66,7 @@
 ./usr/games/hunt				games-games-bin
 ./usr/games/huntd				games-games-bin
 ./usr/games/larn				games-games-bin
+./usr/games/menu                                games-games-bin
 ./usr/games/mille				games-games-bin
 ./usr/games/monop				games-games-bin
 ./usr/games/morse				games-games-bin

@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 
+int fibon(void);
+int printConst(void);
+
 int fibon(){
 	printf("Called fib\n");
 	return 0;
