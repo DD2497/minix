@@ -9,17 +9,15 @@ int fibon(){
 	long target;
 	printf("Called fib please write a number as input\n");
 	scanf("%ld", &target);
-	printf("the %ldth fibonacci number is: %lld\n", target, fib(target));
+	printf("the %ldth fibonacci number is: %ld\n", target, fib(target));
 	return 0;
 }
 
 long fib(long n){
 	if(n == 0)
-		return 1;
+		return 0;
 	if(n == 1)
 		return 1;
-	if(n == 2)
-		return 2;
 	return fib(n-1) + fib(n-2);
 }
 
