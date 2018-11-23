@@ -567,12 +567,15 @@ malloc_init(void)
      */
 
 #ifndef MALLOC_NO_SYSCALLS
-    int rand = 0; 
-    int file = open("/dev/urandom", O_RDONLY); 
-    read(file, &rand, 2);
-    close(file); 
-    size_t rand_buffer = ((size_t)rand % 10000) * 1000; 
-    sbrk(rand_buffer);
+    int file = open("/dev/urandom", O_RDONLY);
+    if(file != NULL)
+    {
+	    int rand = 0; 
+	    read(file, &rand, sizeof(int));
+	    close(file); 
+	    size_t rand_buffer = ((size_t)rand % 10000) * 4096; 
+	    sbrk(rand_buffer);
+    }
 #endif
 
     malloc_origo = pageround((size_t)(uintptr_t)sbrk((intptr_t)0))
