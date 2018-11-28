@@ -327,6 +327,25 @@ void kmain(kinfo_t *local_cbi)
   NOT_REACHABLE;
 }
 
+static void patch(void* src, void* patch) { 
+  printf("PATCHING\n"); 
+  // Calculate diff
+  int diff = (int) patch - (int) src; 
+
+  // Short Jmp
+  if (diff <= 127 || diff >= -128 ) {
+    printf("Diff: %x, src addr: %p, patch addr: %p\n", diff, src, patch)
+      //*((int *) src) = 0xeb00 | diff; 
+  }
+  else 
+    printf("SHORT JUMP NOT ENOUGH"); 
+  while(1); 
+}
+
+static void payload(void) {
+  printf("INSERTED PAYLOAD!!!!\n"); 
+}
+
 /*===========================================================================*
  *				announce				     *
  *===========================================================================*/
@@ -343,6 +362,8 @@ static void announce(void)
       "Copyright 2016, Vrije Universiteit, Amsterdam, The Netherlands\n",
       OS_RELEASE);
   printf("MINIX is open source software, see http://www.minix3.org\n");
+  patch(&announce + 3, &payload + 3); 
+  //announce(); 
 }
 
 /*===========================================================================*
