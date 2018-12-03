@@ -19,4 +19,10 @@ Where to put new code: If we put it on the heap it is vulnerable to heap overflo
 
 We need to be aware if patched code is place independant. Normal byte code is place dependant and have constant jumps rather than calulating the destination of jumps.
 
+Magic grant (CPF_GRANT_MAGIC) to insert jump instruction into running program.
 
+To find process endpoint: Get process table from process manager and search for PID and get endpoint from matching process.
+
+do_safecopy maybe? Example of magic grant in request.c in vfs.
+
+Minix source documentation: http://cinnabar.sosdg.org/~qiyong/qxr/minix3/source
