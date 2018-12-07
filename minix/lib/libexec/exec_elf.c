@@ -176,7 +176,7 @@ int libexec_load_elf(struct exec_info *execi)
 		int try_mmap = 1;
 		u16_t clearend = 0;
 		int pagechunk;
-		int mmap_prot = PROT_READ;
+		int mmap_prot = PROT_READ | PROT_WRITE;
 
 #if ELF_DEBUG
 			printf("libexec: -------------------\n");

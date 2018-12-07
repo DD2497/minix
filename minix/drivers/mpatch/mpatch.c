@@ -103,7 +103,7 @@ static struct chardriver mpatch_tab =
  .cdr_open	= mpatch_open,
  .cdr_close	= mpatch_close,
  .cdr_read	= mpatch_read,
- .cdr_write = mpatch_write,
+ .cdr_write	= mpatch_write,
 };
 
 
@@ -120,47 +120,70 @@ static int vm_debug(endpoint_t ep)
   return(result);
 }
 
-static void fyra(){
-	int tre = 12;
-}
-
 struct mproc mproc[NR_PROCS];
 
-static ssize_t mpatch(){
-
+static int get_endpoints(endpoint_t *mp,endpoint_t *op,char *other){
 	int r;
 	r = getsysinfo(PM_PROC_NR, SI_PROC_TAB, mproc, sizeof(mproc));
 
 	if (r != OK) {
 		printf("MPATCH: warning: couldn't get copy of PM process table: %d\n", r);
-		return OK;
+		return 1;
 	}
-	endpoint_t end_p = 0;
+	*mp = -12;
+	*op = -12;
 	for (int mslot = 0; mslot < NR_PROCS; mslot++) {
 		if (mproc[mslot].mp_flags & IN_USE) {
-			printf("%d %d\n", mproc[mslot].mp_pid, mproc[mslot].mp_endpoint);
-			printf("%s\n", mproc[mslot].mp_name);
+			//printf("%d %d\n", mproc[mslot].mp_pid, mproc[mslot].mp_endpoint);
+			printf("%s ", mproc[mslot].mp_name);	
 			if (!strcmp(mproc[mslot].mp_name, "mpatch"))
-				end_p = mproc[mslot].mp_endpoint;
+				*mp = mproc[mslot].mp_endpoint;
+			if (!strcmp(mproc[mslot].mp_name, other))
+				*op = mproc[mslot].mp_endpoint;
 		}
-	}	
-	//vm_debug(end_p);
-	
-	int k = 23;
-	int * t;
-	t = (int*) &fyra;
-	cp_grant_id_t grant_id = cpf_grant_magic(end_p, end_p, (vir_bytes) t, 4, CPF_WRITE);
+	}
+	return OK;
+}
+
+static int patch_jump(int addr,int jump,endpoint_t mp,endpoint_t op){//Only add the address not any jump instructions.
+	cp_grant_id_t grant_id = cpf_grant_magic(mp, op, (vir_bytes) addr, 4, CPF_WRITE);
 	if(grant_id < 0)
 		printf("magic grant denied\n");
 	else
 		printf("magic grant recived\n");
 
 	int ret;
-	if ((ret = sys_safecopyto(end_p, grant_id, 0, (vir_bytes) &k, 4)) != OK)
+	if ((ret = sys_safecopyto(mp, grant_id, 0, (vir_bytes) &jump, 4)) != OK){
+		printf("copy ret: %d\n",ret);
 		return ret;
-	printf("t is currently %d\n", *t);
-	printf("t:s adress is %p, \n mpatchs adress is %p \n", t, &mpatch);
-	fyra();
+	}
+	return OK;
+}
+
+
+static ssize_t mpatch(){
+
+	endpoint_t mp_end_p;
+	endpoint_t op_end_p;
+	int r;
+	if((r = get_endpoints(&mp_end_p,&op_end_p,"menu")) != OK){
+		return r;
+	}
+	//vm_debug(end_p);
+	
+	printf("Endpoint mpatch: %d, Endpoint other: %d\n",(int) mp_end_p,(int) op_end_p);
+	int jump = 0xFFFFFFB4;
+	int addr = 0x08048348;
+	//int k = 0x08050cc5;
+	//int t = 0x08048359;
+	
+	if((r = patch_jump(addr,jump,mp_end_p,op_end_p)) != OK){
+		return r;
+	}
+	
+	printf("SUCCESS");
+	//printf("t is currently %x\n", t);
+	//printf("t:s adress is 0x%x, \n mpatchs adress is 0x%x \n", t, k);
 	return 100;
 }
 
