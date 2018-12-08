@@ -218,7 +218,7 @@ int verify_grant(
 		/* Currently, it is hardcoded that only VFS and MIB may do
 		 * magic grants.  TODO: this should be a system.conf flag.
 		 */
-		if(granter != VFS_PROC_NR && granter != MIB_PROC_NR 
+		if(granter != VFS_PROC_NR && granter != MIB_PROC_NR && \
 				granter < 131110) {	//This make the entire system unsafe fix!!!!!!!!!
 			printf(
 		"verify_grant: magic grant verify failed: granter (%d) "

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+//#include <string.h>
 #include <minix/syslib.h>
 #include <minix/chardriver.h>
 #include "mpatch.h"
@@ -18,7 +19,7 @@ static int sef_cb_lu_state_save(int, int);
 static int lu_state_restore(void);
 
 /* MPATCH */
-static ssize_t mpatch();
+//static ssize_t mpatch();
  
 /** State variable to count the number of times the device has been opened.
  * Note that this is not the regular type of open counter: it never decreases.
@@ -62,7 +63,7 @@ static int sef_cb_init(int type, sef_init_info_t *UNUSED(info))
     chardriver_announce();
   }
 
-  mpatch();
+  //mpatch();
  
   /* Initialization completed successfully. */
   return OK;
@@ -107,7 +108,7 @@ static struct chardriver mpatch_tab =
 };
 
 
-static int vm_debug(endpoint_t ep)
+/*static int vm_debug(endpoint_t ep)
 {
   message m;
   int result;
@@ -118,7 +119,7 @@ static int vm_debug(endpoint_t ep)
   result = _taskcall(VM_PROC_NR, VM_PT_DEBUG, &m);
 
   return(result);
-}
+}*/
 
 struct mproc mproc[NR_PROCS];
 
@@ -161,27 +162,26 @@ static int patch_jump(int addr,int jump,endpoint_t mp,endpoint_t op){//Only add 
 }
 
 
-static ssize_t mpatch(){
-
+static ssize_t mpatch(char* name){
 	endpoint_t mp_end_p;
 	endpoint_t op_end_p;
 	int r;
-	if((r = get_endpoints(&mp_end_p,&op_end_p,"menu")) != OK){
+	if((r = get_endpoints(&mp_end_p,&op_end_p,name)) != OK){
 		return r;
 	}
 	//vm_debug(end_p);
 	
 	printf("Endpoint mpatch: %d, Endpoint other: %d\n",(int) mp_end_p,(int) op_end_p);
-	int jump = 0xFFFFFFB4;
+	int jump = 0xFFFFFFB4; //menu patch
 	int addr = 0x08048348;
-	//int k = 0x08050cc5;
-	//int t = 0x08048359;
+	//int jump = 0x08050cc5; //mydriver patch
+	//int addr = 0x08048359;
 	
 	if((r = patch_jump(addr,jump,mp_end_p,op_end_p)) != OK){
 		return r;
 	}
 	
-	printf("SUCCESS");
+	printf("SUCCESS\n");
 	//printf("t is currently %x\n", t);
 	//printf("t:s adress is 0x%x, \n mpatchs adress is 0x%x \n", t, k);
 	return 100;
@@ -197,20 +197,20 @@ static int mpatch_open(devminor_t UNUSED(minor), int UNUSED(access),
   received_pos = 0;
   received_msg[0] = '\0';
   
-  cp_grant_id_t grant_id = cpf_grant_magic(0x111, 0x112, 0x123, 100, CPF_WRITE);
-  if(grant_id < 0)
-	printf("magic grant denied\n");
-  else
-	printf("magic grant recived\n");
-  //printf("mpatch_open(). Called %d time(s).\n", ++open_counter);
+  //cp_grant_id_t grant_id = cpf_grant_magic(0x111, 0x112, 0x123, 100, CPF_WRITE);
+  //if(grant_id < 0)
+  //      printf("magic grant denied\n");
+  //else
+  //      printf("magic grant recived\n");
+  printf("mpatch_open(). Called %d time(s).\n", ++open_counter);
 
-  myserver_sys1();
+  //myserver_sys1();
   return OK;
 }
  
 static int mpatch_close(devminor_t UNUSED(minor))
 {
-  //printf("mptach_close");
+  printf("mpatch_close\n");
   return OK;
 }
  
@@ -223,7 +223,7 @@ static ssize_t mpatch_read(devminor_t UNUSED(minor), u64_t position,
   int ret;
   char *buf = HELLO_MESSAGE;
  
-  //printf("mpatch_read()\n");
+  printf("mpatch_read()\n");
  
   /* This is the total size of our device. */
   dev_size = (u64_t) strlen(buf);
@@ -262,28 +262,27 @@ static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
   }
   received_pos += size;
   received_msg[received_pos] = '\0';
-  printf("received=%s\n", received_msg);
+
+  char *rest = received_msg;
+
+  char *name = rest;
+  char *patch_loc = NULL;
+
+  int i; 
+  while(rest[i] != '\0'){
+	  if(rest[i] == ' ' || rest[i] == '\n'){
+		  rest[i++] = '\0';
+		  if(patch_loc == NULL) patch_loc = rest + i;
+	  }
+	  else i++;
+  }
+  printf("received=%s menu?: %d\n", name,!strcmp(name,"menu"));
+  printf("patch_loc empty? %d\n",*patch_loc == '\0');
+
+  mpatch(name);
 
   if (received_msg[received_pos-1] != '\n')
     return size;
-  int pid = atoi(received_msg);
-
-  /* Retrieve and check the PM process table. */
-  r = getsysinfo(PM_PROC_NR, SI_PROC_TAB, mproc, sizeof(mproc));
-  if (r != OK) {
-    printf("MPATCH: warning: couldn't get copy of PM process table: %d\n", r);
-    return OK;
-  }
-  endpoint_t end_p = 0;
-  for (int mslot = 0; mslot < NR_PROCS; mslot++) {
-    if (mproc[mslot].mp_flags & IN_USE) {
-      printf("%d %d\n", mproc[mslot].mp_pid, mproc[mslot].mp_endpoint);
-      if (mproc[mslot].mp_pid == pid)
-        end_p = mproc[mslot].mp_endpoint;
-    }
-  }
-  
-  vm_debug(end_p);
 
   received_pos = 0;
   received_msg[0] = '\0';
