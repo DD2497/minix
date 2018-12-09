@@ -146,15 +146,41 @@ static int get_endpoints(endpoint_t *mp,endpoint_t *op,char *other){
 	return OK;
 }
 
-static int patch_jump(int addr,int jump,endpoint_t mp,endpoint_t op){//Only add the address not any jump instructions.
-	cp_grant_id_t grant_id = cpf_grant_magic(mp, op, (vir_bytes) addr, 4, CPF_WRITE);
+struct jmp_inst { 
+    unsigned char opcode; 
+    unsigned int  rel_addr; 
+}__attribute__((packed));
+
+inline unsigned int _reverse(unsigned int value) { 
+    return (((value & 0x000000FF) << 24) |
+            ((value & 0x0000FF00) <<  8) |
+            ((value & 0x00FF0000) >>  8) |
+            ((value & 0xFF000000) >> 24));
+}
+
+static int patch_jump(int patch_orig_addr,int jump_dest_address,endpoint_t mp,endpoint_t op){//Only add the address not any jump instructions.
+	cp_grant_id_t grant_id = cpf_grant_magic(mp, op, (vir_bytes) patch_orig_addr, 5, CPF_WRITE);
 	if(grant_id < 0)
 		printf("magic grant denied\n");
 	else
 		printf("magic grant recived\n");
 
 	int ret;
-	if ((ret = sys_safecopyto(mp, grant_id, 0, (vir_bytes) &jump, 4)) != OK){
+    struct jmp_inst jmp = {
+        .opcode = 0xe9,
+        .rel_addr = jump_dest_address - (patch_orig_addr + 5) // Rel addr is calculated from the instruction following the jmp
+    }; 
+    printf("Opcode: %x, Payload: %p\n", jmp.opcode, (void*) jmp.rel_addr);
+    printf("Opcode addr: %p, Payload addr: %p \n", &jmp.opcode, &jmp.rel_addr);
+    unsigned char* ptr = (unsigned char*) &jmp;
+    printf("Paybload byte by byte: %x %x %x %x %x\n", 
+            (unsigned char) *ptr, 
+            (unsigned char) *(ptr+1), 
+            (unsigned char) *(ptr+2), 
+            (unsigned char) *(ptr+3), 
+            (unsigned char) *(ptr+4));
+    
+	if ((ret = sys_safecopyto(mp, grant_id, 0, (vir_bytes) &jmp, 5)) != OK){
 		printf("copy ret: %d\n",ret);
 		return ret;
 	}
@@ -172,12 +198,12 @@ static ssize_t mpatch(char* name){
 	//vm_debug(end_p);
 	
 	printf("Endpoint mpatch: %d, Endpoint other: %d\n",(int) mp_end_p,(int) op_end_p);
-	int jump = 0xFFFFFFB4; //menu patch
-	int addr = 0x08048348;
+	int jump_dest_address = 0x8048304; //menu patch
+	int patch_orig_addr = 0x080482e4;
 	//int jump = 0x08050cc5; //mydriver patch
 	//int addr = 0x08048359;
 	
-	if((r = patch_jump(addr,jump,mp_end_p,op_end_p)) != OK){
+	if((r = patch_jump(patch_orig_addr,jump_dest_address,mp_end_p,op_end_p)) != OK){
 		return r;
 	}
 	

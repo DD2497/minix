@@ -2,25 +2,34 @@
 //#include <string.h>
 #include <unistd.h>
 
-void print1(void);
-void print2(void);
+__attribute__((noinline)) void print1(void);
+__attribute__((noinline)) void print2(void);
 
 void print1(){
-	printf("UNPATCHED!!!!!");
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop"); 
+	printf("UNPATCHED!!!!!\n");
 }
 
 void print2(){
-	printf("PATCHED!!!!!!");
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop"); 
+	printf("PATCHED!!!!!!\n");
 }
 
 
-int main(){
-	char str[16];
-	while(1){
-		scanf("%s",str);
-		print1();
-		//sleep(5);
-	}
+int main() {
+    while(1){
+        sleep(3);
+        print1();
+        fflush(stdout);
+    }
 	return 0;
 }
 //int fibon(void);
