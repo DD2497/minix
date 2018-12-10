@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
-//#include <string.h>
 #include <minix/syslib.h>
 #include <minix/chardriver.h>
 #include "mpatch.h"
+
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <minix/timers.h>
 #include <include/arch/i386/include/archtypes.h>
@@ -131,12 +133,10 @@ static int get_endpoints(endpoint_t *mp,endpoint_t *op,char *other){
 		printf("MPATCH: warning: couldn't get copy of PM process table: %d\n", r);
 		return 1;
 	}
-	*mp = -12;
-	*op = -12;
+	*mp = -1;
+	*op = -1;
 	for (int mslot = 0; mslot < NR_PROCS; mslot++) {
 		if (mproc[mslot].mp_flags & IN_USE) {
-			//printf("%d %d\n", mproc[mslot].mp_pid, mproc[mslot].mp_endpoint);
-			printf("%s ", mproc[mslot].mp_name);	
 			if (!strcmp(mproc[mslot].mp_name, "mpatch"))
 				*mp = mproc[mslot].mp_endpoint;
 			if (!strcmp(mproc[mslot].mp_name, other))
@@ -146,44 +146,73 @@ static int get_endpoints(endpoint_t *mp,endpoint_t *op,char *other){
 	return OK;
 }
 
-static int patch_jump(int addr,int jump,endpoint_t mp,endpoint_t op){//Only add the address not any jump instructions.
-	cp_grant_id_t grant_id = cpf_grant_magic(mp, op, (vir_bytes) addr, 4, CPF_WRITE);
+static int patch_jump(int addr, char * jump,endpoint_t mp, endpoint_t op){//Only add the address not any jump instructions.
+	cp_grant_id_t grant_id = cpf_grant_magic(mp, op, (vir_bytes) addr, 5, CPF_WRITE);
 	if(grant_id < 0)
 		printf("magic grant denied\n");
 	else
 		printf("magic grant recived\n");
 
 	int ret;
-	if ((ret = sys_safecopyto(mp, grant_id, 0, (vir_bytes) &jump, 4)) != OK){
+	if ((ret = sys_safecopyto(mp, grant_id, 0, (vir_bytes) jump, 5)) != OK){
 		printf("copy ret: %d\n",ret);
 		return ret;
 	}
 	return OK;
 }
 
+static int write_patch(endpoint_t mpatch_endpoint, endpoint_t target_endpoint){
+	int done = 0;
+	char header[] = {0x55, 0x89, 0xe5, 0x50};
+	char curString[4];
+	int patch_size = 32;
+	char patch[patch_size];
+	int ret;
+
+	int patch_binary = open("/usr/games/menupatch", O_RDONLY);
+	lseek(patch_binary, 0x2e0, SEEK_SET);
+	read(patch_binary, patch, patch_size);
+	close(patch_binary);	
+
+	int freeAddress = 0x080482e0;
+	cp_grant_id_t grant_id = cpf_grant_magic(mpatch_endpoint, target_endpoint, (vir_bytes) freeAddress, patch_size, CPF_WRITE);
+	if(grant_id < 0)
+		printf("grant not recieved");
+
+	if ((ret = sys_safecopyto(mpatch_endpoint, grant_id, 0, (vir_bytes) &patch, patch_size)) != OK){
+		printf("copy failed returned: %d\n",ret);
+		return ret;
+	}
+	return OK;
+}
 
 static ssize_t mpatch(char* name){
-	endpoint_t mp_end_p;
-	endpoint_t op_end_p;
+	endpoint_t mpatch_endpoint;
+	endpoint_t target_endpoint;
 	int r;
-	if((r = get_endpoints(&mp_end_p,&op_end_p,name)) != OK){
+	if((r = get_endpoints(&mpatch_endpoint, &target_endpoint, name)) != OK)
+		return r;
+
+	if((r = write_patch(mpatch_endpoint, target_endpoint)) != OK){
+		printf("Unable to write patch to memory");
 		return r;
 	}
-	//vm_debug(end_p);
 	
-	printf("Endpoint mpatch: %d, Endpoint other: %d\n",(int) mp_end_p,(int) op_end_p);
-	int jump = 0xFFFFFFB4; //menu patch
-	int addr = 0x08048348;
+	printf("Endpoint mpatch: %d, Endpoint other: %d\n",(int) mpatch_endpoint,(int) target_endpoint);
+	//int jump = 0xFFFFFFB4; //menu patch
+	//int addr = 0x08048348;
+	//int addr = 0x08048340;
+	int addr = 0x080483a7;
+	char jump[] = {0xe9, 0x34, 0xff, 0xff, 0xff, 0xff};
+	//printf("jump to: %x %x\n", (int)jump[0], (int)jump[1]);
 	//int jump = 0x08050cc5; //mydriver patch
 	//int addr = 0x08048359;
 	
-	if((r = patch_jump(addr,jump,mp_end_p,op_end_p)) != OK){
+	if((r = patch_jump(addr, jump, mpatch_endpoint, target_endpoint)) != OK){
 		return r;
 	}
 	
 	printf("SUCCESS\n");
-	//printf("t is currently %x\n", t);
-	//printf("t:s adress is 0x%x, \n mpatchs adress is 0x%x \n", t, k);
 	return 100;
 }
 
@@ -250,7 +279,7 @@ static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
 			  cdev_id_t UNUSED(id))
 {
   int r;
-  printf("hello_write(position=%llu, size=%zu)\n", position, size);
+  //printf("hello_write(position=%llu, size=%zu)\n", position, size);
   
   if (size > 1023 - received_pos)
     size = (size_t)(1023 - received_pos);	/* limit size */

@@ -15,7 +15,7 @@ SUBDIR=	adventure arithmetic \
 	monop morse number \
 	pig ppt primes \
 	rain random rogue snake tetris \
-	wargames demo01 menu
+	wargames demo01 menu menupatch
 
 .if !defined(__MINIX)
 .if ${MKCXX} != "no"
