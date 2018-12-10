@@ -32,10 +32,8 @@ int main() {
     }
 	return 0;
 }
-
-void dummy_fun(){
-    asm(".skip 0x4000 , 0x90");
-}
+//Padding in .text segment for patch
+asm(".skip 0x4000 , 0x90");
 
 //int fibon(void);
 //int printConst(void);

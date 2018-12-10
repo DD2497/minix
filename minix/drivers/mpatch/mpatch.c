@@ -234,11 +234,9 @@ static ssize_t mpatch(char* name){
 	//vm_debug(end_p);
 	
 	printf("Endpoint mpatch: %d, Endpoint other: %d\n",(int) mp_end_p,(int) op_end_p);
-	int jump_dest_address = 0x8048304; //menu patch
-	int patch_orig_addr = 0x080482e4;
-	//int jump = 0x08050cc5; //mydriver patch
-	//int addr = 0x08048359
-	int inject_address = 0x8048350;
+	int jump_dest_address = 0x804c304; //menu patch
+	int patch_orig_addr = 0x0804c2e4;
+	int inject_address = 0x80482df;
 	printf("INJ: 0x%x PAY: %p\n",inject_address,&payload);
 	memset(payload,0xDD,8192*sizeof(char));
 
@@ -248,13 +246,11 @@ static ssize_t mpatch(char* name){
 	if((r = patch_jump(patch_orig_addr,jump_dest_address,mp_end_p,op_end_p)) != OK){
 		return r;
 	}
-	/*if((r = check_patch(inject_address,mp_end_p,op_end_p)) != OK){
+	if((r = check_patch(inject_address,mp_end_p,op_end_p)) != OK){
 		return r;
-	}*/
+	}
 	
 	printf("SUCCESS\n");
-	//printf("t is currently %x\n", t);
-	//printf("t:s adress is 0x%x, \n mpatchs adress is 0x%x \n", t, k);
 	return 100;
 }
 
@@ -268,14 +264,8 @@ static int mpatch_open(devminor_t UNUSED(minor), int UNUSED(access),
   received_pos = 0;
   received_msg[0] = '\0';
   
-  //cp_grant_id_t grant_id = cpf_grant_magic(0x111, 0x112, 0x123, 100, CPF_WRITE);
-  //if(grant_id < 0)
-  //      printf("magic grant denied\n");
-  //else
-  //      printf("magic grant recived\n");
   printf("mpatch_open(). Called %d time(s).\n", ++open_counter);
 
-  //myserver_sys1();
   return OK;
 }
  
@@ -312,9 +302,6 @@ static ssize_t mpatch_read(devminor_t UNUSED(minor), u64_t position,
   /* Return the number of bytes read. */
   return size;
 }
-
-struct proc proc[NR_TASKS + NR_PROCS];
-//struct mproc mproc[NR_PROCS];
 
 static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
 			  endpoint_t endpt, cp_grant_id_t grant, size_t size, int UNUSED(flags),
