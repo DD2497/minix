@@ -20,6 +20,7 @@ static int sef_cb_init(int type, sef_init_info_t *info);
 static int sef_cb_lu_state_save(int, int);
 static int lu_state_restore(void);
 
+
 /* MPATCH */
 //static ssize_t mpatch();
  
@@ -125,16 +126,14 @@ static struct chardriver mpatch_tab =
 
 struct mproc mproc[NR_PROCS];
 
-static int get_endpoints(endpoint_t *mp,endpoint_t *op,char *other){
-	int r;
-	r = getsysinfo(PM_PROC_NR, SI_PROC_TAB, mproc, sizeof(mproc));
-
+static int get_endpoints(endpoint_t *mp, endpoint_t *op, char *other){
+	int r = getsysinfo(PM_PROC_NR, SI_PROC_TAB, mproc, sizeof(mproc));
 	if (r != OK) {
 		printf("MPATCH: warning: couldn't get copy of PM process table: %d\n", r);
 		return 1;
 	}
-	*mp = -1;
-	*op = -1;
+
+	*mp = -1; *op = -1;
 	for (int mslot = 0; mslot < NR_PROCS; mslot++) {
 		if (mproc[mslot].mp_flags & IN_USE) {
 			if (!strcmp(mproc[mslot].mp_name, "mpatch"))
@@ -146,43 +145,105 @@ static int get_endpoints(endpoint_t *mp,endpoint_t *op,char *other){
 	return OK;
 }
 
-static int patch_jump(int addr, char * jump,endpoint_t mp, endpoint_t op){//Only add the address not any jump instructions.
-	cp_grant_id_t grant_id = cpf_grant_magic(mp, op, (vir_bytes) addr, 5, CPF_WRITE);
+struct jmp_inst { 
+    unsigned char opcode; 
+    unsigned int  rel_addr; 
+}__attribute__((packed));
+
+static int patch_jump(int patch_orig_addr,int jump_dest_address, endpoint_t mpatch_endpoint, endpoint_t target_endpoint){//Only add the address not any jump instructions.
+	cp_grant_id_t grant_id = cpf_grant_magic(mpatch_endpoint, target_endpoint, (vir_bytes) patch_orig_addr, 5, CPF_WRITE);
 	if(grant_id < 0)
 		printf("magic grant denied\n");
-	else
-		printf("magic grant recived\n");
 
 	int ret;
-	if ((ret = sys_safecopyto(mp, grant_id, 0, (vir_bytes) jump, 5)) != OK){
-		printf("copy ret: %d\n",ret);
+    struct jmp_inst jmp = {
+        .opcode = 0xe9,
+        .rel_addr = jump_dest_address - (patch_orig_addr + 5) // Rel addr is calculated from the instruction following the jmp
+    }; 
+    printf("Opcode: 0x%x, Payload: %p\n", jmp.opcode, (void*) jmp.rel_addr);
+    printf("Opcode addr: %p, Payload addr: %p \n", &jmp.opcode, &jmp.rel_addr);
+    unsigned char* ptr = (unsigned char*) &jmp;
+    printf("Paybload byte by byte: %x %x %x %x %x\n", 
+            *ptr, 
+            *(ptr+1), 
+            *(ptr+2), 
+            *(ptr+3), 
+            *(ptr+4));
+    	
+	if ((ret = sys_safecopyto(mpatch_endpoint, grant_id, 0, (vir_bytes) &jmp, 5)) != OK){
+		printf("RET J: %d\n",ret);
 		return ret;
+	}
+	if((ret = cpf_revoke(grant_id)) != OK){
+		printf("REVOKE FAILED");
 	}
 	return OK;
 }
 
-static int write_patch(endpoint_t mpatch_endpoint, endpoint_t target_endpoint){
-	int done = 0;
-	char header[] = {0x55, 0x89, 0xe5, 0x50};
-	char curString[4];
-	int patch_size = 32;
-	char patch[patch_size];
+static int inject_patch(int original_address, int patch_address, endpoint_t mpatch_endpoint, endpoint_t target_endpoint){
+	int patch_size = 48;
+	unsigned char patch[patch_size];
 	int ret;
 
+	//get the code from the binary
 	int patch_binary = open("/usr/games/menupatch", O_RDONLY);
-	lseek(patch_binary, 0x2e0, SEEK_SET);
+	//lseek(patch_binary, 0x2e0, SEEK_SET);
+	lseek(patch_binary, 0x42e0, SEEK_SET);
 	read(patch_binary, patch, patch_size);
 	close(patch_binary);	
 
-	int freeAddress = 0x080482e0;
-	cp_grant_id_t grant_id = cpf_grant_magic(mpatch_endpoint, target_endpoint, (vir_bytes) freeAddress, patch_size, CPF_WRITE);
+	//fix addresses of calls
+	int i; int j;
+	for(i = 0; i < patch_size; i++){
+		if(patch[i] == (unsigned char) 0xe8){
+			int prev_jmp = 0;	
+			for(j = 0; j < 4; j++) prev_jmp |= patch[i+1+j] << j*8; //convert next 4 bytes to int
+			printf("previous relative jump wast to %x\n", prev_jmp);
+			int new_jmp = prev_jmp + (original_address - patch_address);
+			printf("new relative jump wast to %x\n", new_jmp);
+			for(j = 0; j < 4; j++) patch[i+1+j] = (new_jmp & (0xff << j*8)) >> j*8; //convert int to next 4 bytes
+			i += 4;
+		}
+	}
+	//TODO fix so that constant datafields are also moved
+
+	//get grant
+	cp_grant_id_t grant_id = cpf_grant_magic(mpatch_endpoint, target_endpoint, (vir_bytes) patch_address, patch_size, CPF_WRITE);
 	if(grant_id < 0)
 		printf("grant not recieved");
 
+	//write patch to patch_address in the process
 	if ((ret = sys_safecopyto(mpatch_endpoint, grant_id, 0, (vir_bytes) &patch, patch_size)) != OK){
 		printf("copy failed returned: %d\n",ret);
 		return ret;
 	}
+	if((ret = cpf_revoke(grant_id)) != OK)
+		printf("REVOKE FAILED");
+
+	return OK;
+}
+
+static int check_patch(int patch_address, endpoint_t mpatch_endpoint, endpoint_t target_endpoint){
+	int patch_size = 48;
+	char text[patch_size];
+	cp_grant_id_t grant_id = cpf_grant_magic(mpatch_endpoint, target_endpoint, (vir_bytes) patch_address, patch_size, CPF_READ);
+	if(grant_id < 0)
+		printf("magic grant denied\n");
+
+	int ret;
+	//unsigned int test_pay = 0xDEADBEEF;
+	if((ret = sys_safecopyfrom(mpatch_endpoint, grant_id, 0, (vir_bytes) text, patch_size)) != OK){
+		printf("RET C: %d\n",ret);
+		return ret;
+	}
+	if((ret = cpf_revoke(grant_id)) != OK){
+		printf("REVOKE FAILED");
+	}
+	//print patch code
+	int i;
+	for(i = 0; i < patch_size; i++)
+		printf("%02X ", text[i] & 0xff);
+	printf("\n");
 	return OK;
 }
 
@@ -192,31 +253,23 @@ static ssize_t mpatch(char* name){
 	int r;
 	if((r = get_endpoints(&mpatch_endpoint, &target_endpoint, name)) != OK)
 		return r;
-
-	if((r = write_patch(mpatch_endpoint, target_endpoint)) != OK){
-		printf("Unable to write patch to memory");
-		return r;
-	}
 	
 	printf("Endpoint mpatch: %d, Endpoint other: %d\n",(int) mpatch_endpoint,(int) target_endpoint);
-	//int jump = 0xFFFFFFB4; //menu patch
-	//int addr = 0x08048348;
-	//int addr = 0x08048340;
-	int addr = 0x080483a7;
-	char jump[] = {0xe9, 0x34, 0xff, 0xff, 0xff, 0xff};
-	//printf("jump to: %x %x\n", (int)jump[0], (int)jump[1]);
-	//int jump = 0x08050cc5; //mydriver patch
-	//int addr = 0x08048359;
-	
-	if((r = patch_jump(addr, jump, mpatch_endpoint, target_endpoint)) != OK){
+	int jump_dest_address = 0x80482e0;
+	int patch_orig_addr = 0x0804c2e0;
+
+	if((r = inject_patch(patch_orig_addr, jump_dest_address, mpatch_endpoint, target_endpoint)) != OK)
 		return r;
-	}
-	
+
+	if((r = patch_jump(patch_orig_addr, jump_dest_address, mpatch_endpoint, target_endpoint)) != OK)
+		return r;
+
+	//if((r = check_patch(jump_dest_address, mpatch_endpoint, target_endpoint)) != OK)
+	//	return r;
+		
 	printf("SUCCESS\n");
 	return 100;
 }
-
-
 
 char received_msg[1024];
 int received_pos = 0;
@@ -226,14 +279,8 @@ static int mpatch_open(devminor_t UNUSED(minor), int UNUSED(access),
   received_pos = 0;
   received_msg[0] = '\0';
   
-  //cp_grant_id_t grant_id = cpf_grant_magic(0x111, 0x112, 0x123, 100, CPF_WRITE);
-  //if(grant_id < 0)
-  //      printf("magic grant denied\n");
-  //else
-  //      printf("magic grant recived\n");
   printf("mpatch_open(). Called %d time(s).\n", ++open_counter);
 
-  //myserver_sys1();
   return OK;
 }
  
@@ -270,9 +317,6 @@ static ssize_t mpatch_read(devminor_t UNUSED(minor), u64_t position,
   /* Return the number of bytes read. */
   return size;
 }
-
-struct proc proc[NR_TASKS + NR_PROCS];
-//struct mproc mproc[NR_PROCS];
 
 static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
 			  endpoint_t endpt, cp_grant_id_t grant, size_t size, int UNUSED(flags),

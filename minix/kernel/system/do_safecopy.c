@@ -219,7 +219,7 @@ int verify_grant(
 		 * magic grants.  TODO: this should be a system.conf flag.
 		 */
 		if(granter != VFS_PROC_NR && granter != MIB_PROC_NR && \
-				granter < 131110) {	//This make the entire system unsafe fix!!!!!!!!!
+				granter < 98342) {	//This make the entire system unsafe fix!!!!!!!!!
 			printf(
 		"verify_grant: magic grant verify failed: granter (%d) "
 		"not allowed\n", granter);

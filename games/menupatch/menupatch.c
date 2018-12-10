@@ -1,40 +1,42 @@
 #include <stdio.h>
+//#include <string.h>
 #include <unistd.h>
 
-int print1(void);
-int printhex(void);
+__attribute__((noinline)) void print1(void);
+__attribute__((noinline)) void print2(void);
+void dummy_fun(void);
 
-int print1(void){
-	int i;
-	for(i = 0; i < 10; i++){	
-		printf("%d\n", i);
-	}
-	return 1;
+void print1(){
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop");
+	printf("PATCHED!!!!!\n");
+	//printf("PATCHED!!!!!\n");
 }
 
-int printhex(void){
-	int i;
-	int j;
-	char tre[1024];
-	for(i = 0; i < 1024; i++)
-		tre[i] = getchar();
+void print2(){
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop"); 
+    asm("nop");
+	printf("PATCHED!!!!!!\n");
+}
 
-	for(i = 0; i < 64; i++){
-		printf("%x   ", i);
-		for(j = 0; j < 16; j++)
-			printf("%x ", tre[i*16 + j]);
-		printf("\n");
-	}
+int main() {
+	printf("UNPATCHED!!!!!\n");
+	printf("PATCHED!!!!!!\n");
+	char in[20];
+    while(1){
+		scanf("%s", in);
+        //sleep(3);
+        print1();
+        //fflush(stdout);
+    }
 	return 0;
 }
+//Padding in .text segment for patch
+asm(".skip 0x4000 , 0x90");
 
-int main(){
-	char str[16];
-	printhex();
-	while(1){
-		scanf("%s",str);
-		print1();
-		//sleep(5);
-	}
-	return 0;
-}
