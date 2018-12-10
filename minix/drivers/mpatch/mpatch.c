@@ -151,13 +151,6 @@ struct jmp_inst {
     unsigned int  rel_addr; 
 }__attribute__((packed));
 
-inline unsigned int _reverse(unsigned int value) { 
-    return (((value & 0x000000FF) << 24) |
-            ((value & 0x0000FF00) <<  8) |
-            ((value & 0x00FF0000) >>  8) |
-            ((value & 0xFF000000) >> 24));
-}
-
 static int patch_jump(int patch_orig_addr,int jump_dest_address,endpoint_t mp,endpoint_t op){//Only add the address not any jump instructions.
 	cp_grant_id_t grant_id = cpf_grant_magic(mp, op, (vir_bytes) patch_orig_addr, 5, CPF_WRITE);
 	if(grant_id < 0)
@@ -170,15 +163,15 @@ static int patch_jump(int patch_orig_addr,int jump_dest_address,endpoint_t mp,en
         .opcode = 0xe9,
         .rel_addr = jump_dest_address - (patch_orig_addr + 5) // Rel addr is calculated from the instruction following the jmp
     }; 
-    printf("Opcode: %x, Payload: %p\n", jmp.opcode, (void*) jmp.rel_addr);
+    printf("Opcode: 0x%x, Payload: %p\n", jmp.opcode, (void*) jmp.rel_addr);
     printf("Opcode addr: %p, Payload addr: %p \n", &jmp.opcode, &jmp.rel_addr);
     unsigned char* ptr = (unsigned char*) &jmp;
     printf("Paybload byte by byte: %x %x %x %x %x\n", 
-            (unsigned char) *ptr, 
-            (unsigned char) *(ptr+1), 
-            (unsigned char) *(ptr+2), 
-            (unsigned char) *(ptr+3), 
-            (unsigned char) *(ptr+4));
+            *ptr, 
+            *(ptr+1), 
+            *(ptr+2), 
+            *(ptr+3), 
+            *(ptr+4));
     
 	if ((ret = sys_safecopyto(mp, grant_id, 0, (vir_bytes) &jmp, 5)) != OK){
 		printf("copy ret: %d\n",ret);
