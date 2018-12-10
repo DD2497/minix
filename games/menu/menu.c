@@ -4,13 +4,14 @@
 
 __attribute__((noinline)) void print1(void);
 __attribute__((noinline)) void print2(void);
+void dummy_fun(void);
 
 void print1(){
     asm("nop"); 
     asm("nop"); 
     asm("nop"); 
     asm("nop"); 
-    asm("nop"); 
+    asm("nop");
 	printf("UNPATCHED!!!!!\n");
 }
 
@@ -19,10 +20,9 @@ void print2(){
     asm("nop"); 
     asm("nop"); 
     asm("nop"); 
-    asm("nop"); 
+    asm("nop");
 	printf("PATCHED!!!!!!\n");
 }
-
 
 int main() {
     while(1){
@@ -32,6 +32,11 @@ int main() {
     }
 	return 0;
 }
+
+void dummy_fun(){
+    asm(".skip 0x4000 , 0x90");
+}
+
 //int fibon(void);
 //int printConst(void);
 //long fib(long);

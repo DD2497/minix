@@ -18,6 +18,7 @@ static int sef_cb_init(int type, sef_init_info_t *info);
 static int sef_cb_lu_state_save(int, int);
 static int lu_state_restore(void);
 
+
 /* MPATCH */
 //static ssize_t mpatch();
  
@@ -172,14 +173,56 @@ static int patch_jump(int patch_orig_addr,int jump_dest_address,endpoint_t mp,en
             *(ptr+2), 
             *(ptr+3), 
             *(ptr+4));
-    
+    	
 	if ((ret = sys_safecopyto(mp, grant_id, 0, (vir_bytes) &jmp, 5)) != OK){
-		printf("copy ret: %d\n",ret);
+		printf("RET J: %d\n",ret);
 		return ret;
+	}
+	if((ret = cpf_revoke(grant_id)) != OK){
+		printf("REVOKE FAILED");
 	}
 	return OK;
 }
 
+unsigned char payload[8192];
+
+static int inject_patch(int patch_address,unsigned char *pay,endpoint_t mp,endpoint_t op){
+	cp_grant_id_t grant_id = cpf_grant_magic(mp,op,(vir_bytes) patch_address, 8192, CPF_WRITE);
+	if(grant_id < 0){
+		printf("magic grant denied\n");
+	}
+	else printf("magic grant revieved\n");
+
+	int ret;
+	if((ret = sys_safecopyto(mp, grant_id, 0, (vir_bytes) pay, 8192)) != OK){
+		printf("RET I: %d\n",ret);
+		return ret;
+	}
+	if((ret = cpf_revoke(grant_id)) != OK){
+		printf("REVOKE FAILED");
+	}
+	return OK;
+}
+
+static int check_patch(int patch_address,endpoint_t mp,endpoint_t op){
+	cp_grant_id_t grant_id = cpf_grant_magic(mp,op,(vir_bytes) (patch_address+0x1000), sizeof(int), CPF_READ);
+	if(grant_id < 0){
+		printf("magic grant denied\n");
+	}
+	else printf("magic grant revieved\n");
+
+	int ret;
+	unsigned int test_pay = 0xDEADBEEF;
+	if((ret = sys_safecopyfrom(mp, grant_id, 0, (vir_bytes) &test_pay, sizeof(int))) != OK){
+		printf("RET C: %d\n",ret);
+		return ret;
+	}
+	if((ret = cpf_revoke(grant_id)) != OK){
+		printf("REVOKE FAILED");
+	}
+	printf("DID IT WORK? 0x%x\n",test_pay);
+	return OK;
+}
 
 static ssize_t mpatch(char* name){
 	endpoint_t mp_end_p;
@@ -194,11 +237,20 @@ static ssize_t mpatch(char* name){
 	int jump_dest_address = 0x8048304; //menu patch
 	int patch_orig_addr = 0x080482e4;
 	//int jump = 0x08050cc5; //mydriver patch
-	//int addr = 0x08048359;
-	
+	//int addr = 0x08048359
+	int inject_address = 0x8048350;
+	printf("INJ: 0x%x PAY: %p\n",inject_address,&payload);
+	memset(payload,0xDD,8192*sizeof(char));
+
+	if((r = inject_patch(inject_address,payload,mp_end_p,op_end_p)) != OK){
+		return r;
+	}
 	if((r = patch_jump(patch_orig_addr,jump_dest_address,mp_end_p,op_end_p)) != OK){
 		return r;
 	}
+	/*if((r = check_patch(inject_address,mp_end_p,op_end_p)) != OK){
+		return r;
+	}*/
 	
 	printf("SUCCESS\n");
 	//printf("t is currently %x\n", t);
