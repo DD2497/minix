@@ -142,6 +142,10 @@ static int get_endpoints(endpoint_t *mp, endpoint_t *op, char *other){
 				*op = mproc[mslot].mp_endpoint;
 		}
 	}
+	if(*op == -1){
+		printf("Process %s was not found\n",other);
+		return -1;
+	}
 	return OK;
 }
 
@@ -196,12 +200,12 @@ static int inject_patch(int original_address, int patch_address, endpoint_t mpat
 	int i; int j;
 	for(i = 0; i < patch_size; i++){
 		if(patch[i] == (unsigned char) 0xe8){
-			int prev_jmp = 0;	
-			for(j = 0; j < 4; j++) prev_jmp |= patch[i+1+j] << j*8; //convert next 4 bytes to int
-			printf("previous relative jump wast to %x\n", prev_jmp);
+			int prev_jmp = 0;
+			prev_jmp = *((int *) (patch+i+1));//Read next 4 bytes as int
+			printf("previous relative jump was to %x\n", prev_jmp);
 			int new_jmp = prev_jmp + (original_address - patch_address);
-			printf("new relative jump wast to %x\n", new_jmp);
-			for(j = 0; j < 4; j++) patch[i+1+j] = (new_jmp & (0xff << j*8)) >> j*8; //convert int to next 4 bytes
+			printf("new relative jump was to %x\n", new_jmp);
+			*((int *) (patch+i+1)) = new_jmp;//Insert the new relative jmp over the old one
 			i += 4;
 		}
 	}
@@ -225,7 +229,7 @@ static int inject_patch(int original_address, int patch_address, endpoint_t mpat
 
 static int check_patch(int patch_address, endpoint_t mpatch_endpoint, endpoint_t target_endpoint){
 	int patch_size = 48;
-	char text[patch_size];
+	unsigned char text[patch_size];
 	cp_grant_id_t grant_id = cpf_grant_magic(mpatch_endpoint, target_endpoint, (vir_bytes) patch_address, patch_size, CPF_READ);
 	if(grant_id < 0)
 		printf("magic grant denied\n");
@@ -242,7 +246,7 @@ static int check_patch(int patch_address, endpoint_t mpatch_endpoint, endpoint_t
 	//print patch code
 	int i;
 	for(i = 0; i < patch_size; i++)
-		printf("%02X ", text[i] & 0xff);
+		printf("%02X ", text[i]);
 	printf("\n");
 	return OK;
 }
