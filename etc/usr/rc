@@ -447,6 +447,9 @@ start)
     # Start mydriver
     up -n mydriver -dev /dev/mydriver
 
+    # Start mypatch
+    up -n mpatch -dev /dev/mpatch
+
     # Load the stored hostname into the sysctl database.
     test -r /etc/hostname.file && hostname $(cat /etc/hostname.file)
 

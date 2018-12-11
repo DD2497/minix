@@ -75,12 +75,13 @@
 #define BMP085B2S77_MAJOR	  54	/* 54 = /dev/bmp085b2s77 (bmp085)     */
 #define BMP085B3S77_MAJOR	  55	/* 55 = /dev/bmp085b3s77 (bmp085)     */
 					/* 56-63 = /dev/vnd[0-7] (vnd)	      */
-#define INPUT_MAJOR		  64	/* 64 = /dev/input (input)            */
+#define INPUT_MAJOR			  64	/* 64 = /dev/input (input)            */
 #define USB_BASE_MAJOR		  65	/* 65-133 = USB major range	      */
-#define PCI_MAJOR		 134	/* 134 = /dev/pci (pci)            */
-#define GROUPDRIVER_MAJOR   135	/* 135 = /dev/groupdriver (groupdriver driver)    */
+#define PCI_MAJOR			  134	/* 134 = /dev/pci (pci)            */
+#define GROUPDRIVER_MAJOR	  135	/* 135 = /dev/groupdriver (groupdriver driver)    */
+#define MPATCH_MAJOR		  136	/* 136 = /dev/mpatch (mpatch driver)    */
 
-#define NR_DEVICES   		 136	/* number of (major) devices */
+#define NR_DEVICES   		  137	/* number of (major) devices */
 
 /* Minor device numbers for memory driver. */
 #  define RAM_DEV_OLD  		   0	/* minor device for /dev/ram */

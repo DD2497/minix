@@ -199,6 +199,7 @@
 ./etc/system.conf.d/inet                                minix-base      obsolete
 ./etc/system.conf.d/ipc                                 minix-base
 ./etc/system.conf.d/lwip                                minix-base
+./etc/system.conf.d/mpatch                              minix-base
 ./etc/system.conf.d/mydriver                            minix-base
 ./etc/system.conf.d/random                              minix-base
 ./etc/system.conf.d/uds                                 minix-base
@@ -287,6 +288,7 @@
 ./service/memory                                        minix-base
 ./service/mfs                                           minix-base
 ./service/mib                                           minix-base
+./service/mpatch                                        minix-base
 ./service/mydriver                                      minix-base
 ./service/myserver                                      minix-base
 ./service/pfs                                           minix-base
