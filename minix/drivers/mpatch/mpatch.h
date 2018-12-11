@@ -2,6 +2,6 @@
 #define __MPATCH_H
  
 /** The Hello, World! message. */
-#define HELLO_MESSAGE "Mpatch running\n"
+#define MPATCH_MSG "Mpatch running\n"
  
 #endif /* __MYDRIVER_H */
