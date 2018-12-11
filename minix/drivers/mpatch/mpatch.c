@@ -3,16 +3,16 @@
 #include <minix/syslib.h>
 #include <minix/chardriver.h>
 #include "mpatch.h"
-
 #include <fcntl.h>
 #include <unistd.h>
-
+#include <errno.h>
 #include <minix/timers.h>
 #include <include/arch/i386/include/archtypes.h>
 #include "kernel/proc.h"
 #include <minix/sysinfo.h>
 #include <minix/myserver.h>
 #include "servers/pm/mproc.h"
+
 
 /* SEF functions and variables. */
 static void sef_local_startup(void);
@@ -23,71 +23,72 @@ static int lu_state_restore(void);
 
 /* MPATCH */
 //static ssize_t mpatch();
- 
+
 /** State variable to count the number of times the device has been opened.
  * Note that this is not the regular type of open counter: it never decreases.
  */
 static int open_counter;
- 
+extern int errno; 
+
 static int sef_cb_lu_state_save(int UNUSED(state), int UNUSED(flags)) {
-  return OK;
+    return OK;
 }
- 
+
 static int lu_state_restore() {
-  return OK;
+    return OK;
 }
-  
+
 static int sef_cb_init(int type, sef_init_info_t *UNUSED(info))
 {
-  /* Initialize the hello driver. */
-  int do_announce_driver = TRUE;
- 
-  open_counter = 0;
-  switch(type) {
-  case SEF_INIT_FRESH:
-    printf("%s", HELLO_MESSAGE);
-    break;
- 
-  case SEF_INIT_LU:
-    /* Restore the state. */
-    lu_state_restore();
-    do_announce_driver = FALSE;
- 
-    printf("%sHey, I'm a new version!\n", HELLO_MESSAGE);
-    break;
- 
-  case SEF_INIT_RESTART:
-    printf("%sHey, I've just been restarted!\n", HELLO_MESSAGE);
-    break;
-  }
+    /* Initialize the hello driver. */
+    int do_announce_driver = TRUE;
 
-  /* Announce we are up when necessary. */
-  if (do_announce_driver) {
-    chardriver_announce();
-  }
+    open_counter = 0;
+    switch(type) {
+        case SEF_INIT_FRESH:
+            printf("%s", MPATCH_MSG);
+            break;
 
-  //mpatch();
- 
-  /* Initialization completed successfully. */
-  return OK;
+        case SEF_INIT_LU:
+            /* Restore the state. */
+            lu_state_restore();
+            do_announce_driver = FALSE;
+
+            printf("%sHey, I'm a new version!\n", MPATCH_MSG);
+            break;
+
+        case SEF_INIT_RESTART:
+            printf("%sHey, I've just been restarted!\n", MPATCH_MSG);
+            break;
+    }
+
+    /* Announce we are up when necessary. */
+    if (do_announce_driver) {
+        chardriver_announce();
+    }
+
+    //mpatch();
+
+    /* Initialization completed successfully. */
+    return OK;
 }
 
 static void sef_local_startup()
 {
-  /*
-   * Register init callbacks. Use the same function for all event types
-   */
-  sef_setcb_init_fresh(sef_cb_init);
-  sef_setcb_init_lu(sef_cb_init);
-  sef_setcb_init_restart(sef_cb_init);
- 
-  /*
-   * Register live update callbacks.
-   */
-  sef_setcb_lu_state_save(sef_cb_lu_state_save);
- 
-  /* Let SEF perform startup. */
-  sef_startup();
+    /*
+     * Register init callbacks. Use the same function for all event types
+     */
+    sef_setcb_init_fresh(sef_cb_init);
+    sef_setcb_init_lu(sef_cb_init);
+    sef_setcb_init_restart(sef_cb_init);
+
+    /*
+     * Register live update callbacks.
+     */
+    sef_setcb_lu_state_save(sef_cb_lu_state_save);
+
+    /* Let SEF perform startup. */
+    sef_startup();
 }
 
 
@@ -97,22 +98,22 @@ static void sef_local_startup()
 static int mpatch_open(devminor_t minor, int access, endpoint_t user_endpt);
 static int mpatch_close(devminor_t minor);
 static ssize_t mpatch_read(devminor_t minor, u64_t position, endpoint_t endpt,
-    cp_grant_id_t grant, size_t size, int flags, cdev_id_t id);
+        cp_grant_id_t grant, size_t size, int flags, cdev_id_t id);
 static ssize_t mpatch_write(devminor_t minor, u64_t position, endpoint_t endpt,
-			   cp_grant_id_t grant, size_t size, int flags, cdev_id_t id);
+        cp_grant_id_t grant, size_t size, int flags, cdev_id_t id);
 
 /* Entry points to the hello driver. */
 static struct chardriver mpatch_tab =
 {
- .cdr_open	= mpatch_open,
- .cdr_close	= mpatch_close,
- .cdr_read	= mpatch_read,
- .cdr_write	= mpatch_write,
+    .cdr_open	= mpatch_open,
+    .cdr_close	= mpatch_close,
+    .cdr_read	= mpatch_read,
+    .cdr_write	= mpatch_write,
 };
 
 
 /*static int vm_debug(endpoint_t ep)
-{
+  {
   message m;
   int result;
 
@@ -122,7 +123,7 @@ static struct chardriver mpatch_tab =
   result = _taskcall(VM_PROC_NR, VM_PT_DEBUG, &m);
 
   return(result);
-}*/
+  }*/
 
 struct mproc mproc[NR_PROCS];
 
@@ -158,8 +159,7 @@ static int patch_jump(int patch_orig_addr,int jump_dest_address, endpoint_t mpat
 	cp_grant_id_t grant_id = cpf_grant_magic(mpatch_endpoint, target_endpoint, (vir_bytes) patch_orig_addr, 5, CPF_WRITE);
 	if(grant_id < 0)
 		printf("magic grant denied\n");
-
-	int ret;
+    int ret;
     struct jmp_inst jmp = {
         .opcode = 0xe9,
         .rel_addr = jump_dest_address - (patch_orig_addr + 5) // Rel addr is calculated from the instruction following the jmp
@@ -167,12 +167,12 @@ static int patch_jump(int patch_orig_addr,int jump_dest_address, endpoint_t mpat
     printf("Opcode: 0x%x, Payload: %p\n", jmp.opcode, (void*) jmp.rel_addr);
     printf("Opcode addr: %p, Payload addr: %p \n", &jmp.opcode, &jmp.rel_addr);
     unsigned char* ptr = (unsigned char*) &jmp;
-    printf("Paybload byte by byte: %x %x %x %x %x\n", 
-            *ptr, 
-            *(ptr+1), 
-            *(ptr+2), 
-            *(ptr+3), 
-            *(ptr+4));
+   // printf("Paybload byte by byte: %x %x %x %x %x\n", 
+   //         *ptr, 
+   //         *(ptr+1), 
+   //         *(ptr+2), 
+   //         *(ptr+3), 
+   //         *(ptr+4));
     	
 	if ((ret = sys_safecopyto(mpatch_endpoint, grant_id, 0, (vir_bytes) &jmp, 5)) != OK){
 		printf("RET J: %d\n",ret);
@@ -251,133 +251,159 @@ static int check_patch(int patch_address, endpoint_t mpatch_endpoint, endpoint_t
 	return OK;
 }
 
-static ssize_t mpatch(char* name){
-	endpoint_t mpatch_endpoint;
-	endpoint_t target_endpoint;
-	int r;
-	if((r = get_endpoints(&mpatch_endpoint, &target_endpoint, name)) != OK)
-		return r;
-	
-	printf("Endpoint mpatch: %d, Endpoint other: %d\n",(int) mpatch_endpoint,(int) target_endpoint);
+//patch_orig_addr = 0x0804c2e0;
+static ssize_t mpatch(char* name, int patch_orig_addr){
+    endpoint_t mpatch_endpoint;
+    endpoint_t target_endpoint;
+    int r;
+    if((r = get_endpoints(&mpatch_endpoint,&target_endpoint,name)) != OK){
+        return r;
+    }
+    //vm_debug(end_p);
+
+    printf("Endpoint mpatch: %d, Endpoint other: %d\n",(int) mpatch_endpoint,(int) target_endpoint);
 	int jump_dest_address = 0x80482e0;
-	int patch_orig_addr = 0x0804c2e0;
 
-	if((r = inject_patch(patch_orig_addr, jump_dest_address, mpatch_endpoint, target_endpoint)) != OK)
+	if((r = inject_patch(patch_orig_addr, jump_dest_address, mpatch_endpoint, target_endpoint)) != OK) { 
 		return r;
+    }
 
-	if((r = patch_jump(patch_orig_addr, jump_dest_address, mpatch_endpoint, target_endpoint)) != OK)
-		return r;
+    if((r = patch_jump(patch_orig_addr,jump_dest_address,mpatch_endpoint,target_endpoint)) != OK){
+        return r;
+    }
 
 	//if((r = check_patch(jump_dest_address, mpatch_endpoint, target_endpoint)) != OK)
 	//	return r;
-		
-	printf("SUCCESS\n");
-	return 100;
+
+    printf("SUCCESS\n");
+    return 100;
 }
 
-char received_msg[1024];
-int received_pos = 0;
+char* proc_name = NULL; 
 static int mpatch_open(devminor_t UNUSED(minor), int UNUSED(access),
-                      endpoint_t UNUSED(user_endpt))
+        endpoint_t UNUSED(user_endpt))
 {
-  received_pos = 0;
-  received_msg[0] = '\0';
-  
-  printf("mpatch_open(). Called %d time(s).\n", ++open_counter);
-
-  return OK;
+    printf("mpatch_open(). Called %d time(s).\n", ++open_counter);
+    proc_name = (char*) malloc(0); 
+    return OK;
 }
- 
+
 static int mpatch_close(devminor_t UNUSED(minor))
 {
-  printf("mpatch_close\n");
-  return OK;
+    printf("mpatch_close\n");
+    free(proc_name); 
+    return OK;
 }
- 
+
 static ssize_t mpatch_read(devminor_t UNUSED(minor), u64_t position,
-                          endpoint_t endpt, cp_grant_id_t grant, size_t size, int UNUSED(flags),
-                          cdev_id_t UNUSED(id))
+        endpoint_t endpt, cp_grant_id_t grant, size_t size, int UNUSED(flags),
+        cdev_id_t UNUSED(id))
 {
-  u64_t dev_size;
-  char *ptr;
-  int ret;
-  char *buf = HELLO_MESSAGE;
- 
-  printf("mpatch_read()\n");
- 
-  /* This is the total size of our device. */
-  dev_size = (u64_t) strlen(buf);
- 
-  /* Check for EOF, and possibly limit the read size. */
-  if (position >= dev_size) return 0;		/* EOF */
-  if (position + size > dev_size)
-    size = (size_t)(dev_size - position);	/* limit size */
- 
-  /* Copy the requested part to the caller. */
-  ptr = buf + (size_t)position;
-  if ((ret = sys_safecopyto(endpt, grant, 0, (vir_bytes) ptr, size)) != OK)
-    return ret;
- 
-  /* Return the number of bytes read. */
-  return size;
+    u64_t dev_size;
+    char *ptr;
+    int ret;
+    char *buf = MPATCH_MSG;
+    printf("mpatch_read()\n");
+
+    /* This is the total size of our device. */
+    dev_size = (u64_t) strlen(buf);
+
+    /* Check for EOF, and possibly limit the read size. */
+    if (position >= dev_size) return 0;		/* EOF */
+    if (position + size > dev_size)
+        size = (size_t)(dev_size - position);	/* limit size */
+
+    /* Copy the requested part to the caller. */
+    ptr = buf + (size_t)position;
+    if ((ret = sys_safecopyto(endpt, grant, 0, (vir_bytes) ptr, size)) != OK)
+        return ret;
+
+    /* Return the number of bytes read. */
+    return size;
+}
+
+static int parse(char* buff, int size, char* name_buff, unsigned int* patch_addr) { 
+    int r = 0; 
+    int i = 0; 
+    // Parse name_buff
+    for(; i < size; i++) { 
+        printf("%d %c\n", i, buff[i]);
+        if (buff[i] == '\n' || buff[i] == ' ' || buff[i] == '\0') { 
+            printf("Will break after iter\n");
+            if (i > 0) { 
+                name_buff[i] = '\0';
+                r++;
+            }
+            else { 
+                return r; 
+            }
+            break;
+        }
+        name_buff[i] = buff[i]; 
+    }
+
+    for (i++; i < size && (buff[i] == ' ' || buff[i] == '\n' || buff[i] == '\0'); i++);
+
+    if (i == size) { 
+        return r; 
+    }
+
+    // Parse patch addr
+    char* end; 
+    unsigned int tmp_addr; 
+    errno = 0; 
+    tmp_addr = strtol(buff+i, &end, 16); 
+    printf("Tmp addr: %x\n", tmp_addr); 
+    if(errno || buff+i == end) { 
+        printf("[MPATCH] ERROR PARSING ADDR"); 
+        return r; 
+    }
+    *patch_addr = tmp_addr; 
+    return ++r; 
 }
 
 static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
-			  endpoint_t endpt, cp_grant_id_t grant, size_t size, int UNUSED(flags),
-			  cdev_id_t UNUSED(id))
+        endpoint_t endpt, cp_grant_id_t grant, size_t size, int UNUSED(flags),
+        cdev_id_t UNUSED(id))
 {
-  int r;
-  //printf("hello_write(position=%llu, size=%zu)\n", position, size);
-  
-  if (size > 1023 - received_pos)
-    size = (size_t)(1023 - received_pos);	/* limit size */
- 
-  r = sys_safecopyfrom(endpt, grant, 0, (vir_bytes) (received_msg+received_pos), size);
-  if (r != OK) {
-    printf("MPATCH: warning: couldn't copy data %d\n", r);
-    return OK;
-  }
-  received_pos += size;
-  received_msg[received_pos] = '\0';
+    int r;
+    printf("mpatch_write(position=%llu, size=%zu)\n", position, size);
+    char buff[size]; 
+    r = sys_safecopyfrom(endpt, grant, 0, (vir_bytes) buff, size);
+    if (r != OK) {
+        printf("[MPATCH] WARNING: couldn't copy data %d\n", r);
+        return OK;
+    } 
 
-  char *rest = received_msg;
+    char name_buff[128];
+    unsigned int* patch_addr = (unsigned int*) malloc(sizeof(unsigned int)); 
+    printf("Patch_addr addr: %p\n", patch_addr); 
+    if (parse(buff, size, name_buff, patch_addr) != 2) { 
+        printf("[MPATCH] WARNING: Could not parse input file."); 
+        return OK; 
+    }
+    printf("Patch_addr value: %x\n", *patch_addr); 
+    free(proc_name); 
+    proc_name = (char*) malloc(strlen(name_buff));
+    strcpy(proc_name, name_buff);  
+    printf("received=%s menu?: %d\n",name_buff,!strcmp(name_buff,"menu"));
+    printf("patch_loc empty? %d\n", patch_addr == '\0');
 
-  char *name = rest;
-  char *patch_loc = NULL;
-
-  int i; 
-  while(rest[i] != '\0'){
-	  if(rest[i] == ' ' || rest[i] == '\n'){
-		  rest[i++] = '\0';
-		  if(patch_loc == NULL) patch_loc = rest + i;
-	  }
-	  else i++;
-  }
-  printf("received=%s menu?: %d\n", name,!strcmp(name,"menu"));
-  printf("patch_loc empty? %d\n",*patch_loc == '\0');
-
-  mpatch(name);
-
-  if (received_msg[received_pos-1] != '\n')
+    mpatch(proc_name, *patch_addr);
+    free(patch_addr); 
     return size;
-
-  received_pos = 0;
-  received_msg[0] = '\0';
-  
-  return size;
 }
-
 
 int main(void)
 {
-  /*
-   * Perform initialization.
-   */
-  sef_local_startup();
- 
-  /*
-   * Run the main loop.
-   */
-  chardriver_task(&mpatch_tab);
-  return OK;
+    /*
+     * Perform initialization.
+     */
+    sef_local_startup();
+
+    /*
+     * Run the main loop.
+     */
+    chardriver_task(&mpatch_tab);
+    return OK;
 }

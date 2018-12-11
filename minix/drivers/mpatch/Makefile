@@ -8,7 +8,7 @@ FILESDIR= /etc/system.conf.d
 
 CPPFLAGS+= -I${NETBSDSRCDIR}/minix
 
-DPADD+= ${LIBCHARDRIVER} ${LIBSYS}
+DPADD+= ${LIBCHARDRIVER} ${LIBSYS} 
 LDADD+= -lchardriver -lsys	# we use both the libsys (to implement a service) and the chardriver protocol
 
 MAN=
