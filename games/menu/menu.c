@@ -1,27 +1,24 @@
 #include <stdio.h>
-//#include <string.h>
 #include <unistd.h>
+
+#define NOP5	asm(".skip 0x1, 0x0f"); \
+				asm(".skip 0x1, 0x1f"); \
+				asm(".skip 0x1, 0x44"); \
+				asm(".skip 0x2, 0x00");
+
 
 __attribute__((noinline)) void print1(void);
 __attribute__((noinline)) void print2(void);
 void dummy_fun(void);
 
 void print1(){
-    asm("nop"); 
-    asm("nop"); 
-    asm("nop"); 
-    asm("nop"); 
-    asm("nop");
+	NOP5
 	printf("UNPATCHED!!!!!\n");
 }
 
 void print2(){
-    asm("nop"); 
-    asm("nop"); 
-    asm("nop"); 
-    asm("nop"); 
-    asm("nop");
-	printf("PATCHED!!!!!!\n");
+	NOP5
+	printf("UNPATCHED!!!!!!\n");
 }
 
 int main() {
