@@ -11,29 +11,17 @@
 
 
 __attribute__((noinline)) void print1(void);
-__attribute__((noinline)) void print2(void);
-void dummy_fun(void);
 
 void print1(){
 	NOP5
-	printf("PATCHED!!!!!\n");
-	//printf("PATCHED!!!!!\n");
-}
-
-void print2(){
-	NOP5
-	printf("PATCHED!!!!!!\n");
+	printf("Patched from menupatch!\n");
 }
 
 int main() {
-	printf("UNPATCHED!!!!!\n");
-	printf("PATCHED!!!!!!\n");
 	char in[20];
     while(1){
 		scanf("%s", in);
-        //sleep(3);
         print1();
-        //fflush(stdout);
     }
 	return 0;
 }

@@ -116,7 +116,8 @@ struct patch_info {
     
     char * file_name;
     int patch_size;
-    unsigned int patch_location_in_file;
+    unsigned int virtual_memory_start;
+    unsigned int virtual_memory_location;
 
     unsigned int patch_address;
 };
@@ -233,14 +234,93 @@ static int inject_jump(struct patch_info p_info){//Only add the address not any 
 	return OK;
 }
 
+/*static char * read_any_size_data(struct patch_info p_info, unsigned int addr, unsigned int file_location){
+    int j;
+    int patch_binary = open(p_info.file_name, O_RDONLY);
+    int done = 0;
+    int size = 64;
+    char * final_buffer;
+    while(size < FREE_SPACE){
+        size = size * 2;
+        lseek(patch_binary, file_location, SEEK_SET);
+        char data_buffer[size];
+        read(patch_binary, data_buffer, size);
+        for(j = 0; j < size; j++){
+            if(data_buffer[j] = (unsigned char) 0x00){
+                final_buffer = malloc(j);
+                strcpy(data_buffer, final_buffer, j);
+                return final_buffer
+            }
+        }
+    }
+    printf("Tried to copy data section that was to big\n");
+    return NULL
+}*/
+
+static int move_data(struct patch_info p_info, unsigned char * patch_buffer){
+    int i; int j;
+    int movl = 0;
+    unsigned int data_address = p_info.patch_address;
+    for(i = 0; i < p_info.patch_size-7; i++){   //-7 since movl is 7 bytes
+        if(patch_buffer[i] == (unsigned char) 0xc7 && patch_buffer[i+1] ==  
+                (unsigned char) 0x04 && patch_buffer[i+2] == (unsigned char) 0x24){
+
+            unsigned int addr = *((int*) (patch_buffer + i + 3));
+            unsigned int file_location = addr - p_info.virtual_memory_start;
+
+            printf("data file location: %x\n", file_location);
+
+            //Read data from file
+            //char * data_buffer = read_any_size_data(p_info, addr, file_location);
+            /*=====================================*/   //This section could be replaced by read_any_size_data()
+            int patch_binary = open(p_info.file_name, O_RDONLY);
+            lseek(patch_binary, file_location, SEEK_SET);
+            int max_size = 128;
+            char data_buffer[max_size];
+            read(patch_binary, data_buffer, max_size);
+            for(j = 0; j < max_size; j++){
+                if(data_buffer[j] == (unsigned char) 0x00){
+                    max_size = j + 1;
+                    break;
+                }
+            }
+            if(j == max_size)
+                data_buffer[j] = (char) 0x00;
+            /* ==================================== */
+
+            //Check that there is space for the data
+            data_address = data_address - max_size;
+            printf("data address: %x\n", data_address);
+            unsigned char prog_buffer[max_size];
+            read_from_target(prog_buffer, max_size, data_address);
+            for(j = 0; j < max_size; j++){
+                if(!(prog_buffer[j] == (unsigned char) 0x90)){
+                    //free(data_buffer);
+                    printf("couldn't find space for patch data continues without copying\n");
+                    return OK;
+                }
+            }
+
+            //writed the data
+            write_to_target(data_buffer, max_size, data_address);
+
+            //change the pointer to the copied data
+            *(unsigned int *) (patch_buffer+i+3) = data_address;
+            i += 6; 
+            //free(data_buffer);
+        }   
+    }   
+    return OK;
+}
+
 static int inject_patch(struct patch_info p_info){
 	unsigned char patch_buffer[p_info.patch_size];
 	int ret;
 
+    unsigned int patch_location_in_file = p_info.virtual_memory_location - p_info.virtual_memory_start;
 	//get the code from the binary
 	int patch_binary = open(p_info.file_name, O_RDONLY);
-	//lseek(patch_binary, 0x2e0, SEEK_SET);
-	lseek(patch_binary, p_info.patch_location_in_file, SEEK_SET);
+	lseek(patch_binary, patch_location_in_file, SEEK_SET);
 	read(patch_binary, patch_buffer, p_info.patch_size);
 	close(patch_binary);	
 
@@ -257,7 +337,9 @@ static int inject_patch(struct patch_info p_info){
 			i += 4;
 		}
 	}
-	//TODO fix so that constant datafields are also moved
+
+    //TODO move_data should belong to a get_patch function that should be called before get_patch_adress
+    move_data(p_info, patch_buffer);    
 
 	write_to_target(patch_buffer, p_info.patch_size, p_info.patch_address);
 
@@ -300,9 +382,9 @@ static ssize_t mpatch(struct patch_info p_info){
         return r;
     }
 
-	//if((r = check_patch(p_info)) != OK){
-	//	return r;
-    //}
+	if((r = check_patch(p_info)) != OK){
+		return r;
+    }
 
     printf("SUCCESS\n");
     return 100;
@@ -422,10 +504,11 @@ static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
 
 	struct patch_info p_info = {
 		.process_name = name_buff,
-		.function_original_address = original_addr, //0x0804c2e0,
+		.function_original_address =  original_addr, // 0x0804c2e0,
         .file_name = "/usr/games/menupatch",
-		.patch_size = 48,
-		.patch_location_in_file = 0x42e0,
+		.patch_size = 32,
+        .virtual_memory_start = 0x8048000,
+        .virtual_memory_location = 0x0804c2e0,
 		.patch_address = 0 //calculated later
 	};
 
