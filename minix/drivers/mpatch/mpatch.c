@@ -127,6 +127,15 @@ struct mproc mproc[NR_PROCS];
 endpoint_t mpatch_endpoint;
 endpoint_t target_endpoint;
 
+static int bytesEqual(unsigned char * first, unsigned char * second, int length){
+    int i;
+    for(i = 0; i < length; i++){
+        if(first[i] != second[i])
+            return 0;
+    }
+    return 1;
+}
+
 static int get_endpoints(char *target_name){
 	int r = getsysinfo(PM_PROC_NR, SI_PROC_TAB, mproc, sizeof(mproc));
 	if (r != OK) {
@@ -229,8 +238,21 @@ static int inject_jump(struct patch_info p_info){//Only add the address not any 
     }; 
     printf("Opcode: 0x%x, Payload: %p\n", jmp.opcode, (void*) jmp.rel_addr);
     printf("Opcode addr: %p, Payload addr: %p \n", &jmp.opcode, &jmp.rel_addr);
+
+    unsigned char header[32];
+    read_from_target(header, 32, p_info.function_original_address);
+    int i;
+    unsigned char nop5[] = {0x0f, 0x1f, 0x44, 0x00, 0x00};
+    for (i = 0; i < 32; i++){
+        if(bytesEqual(&header[i], nop5, 5))
+            break;
+    }
+    if(i == 32){
+        printf("The function to be patched did not contain a 5 byte nop in it's header or had to many arguments\n");
+        return OK;
+    }
     	
-	write_to_target((char *) &jmp, JMP_SIZE, p_info.function_original_address);
+	write_to_target((char *) &jmp, JMP_SIZE, p_info.function_original_address + i);
 	return OK;
 }
 
@@ -382,9 +404,9 @@ static ssize_t mpatch(struct patch_info p_info){
         return r;
     }
 
-	if((r = check_patch(p_info)) != OK){
-		return r;
-    }
+	//if((r = check_patch(p_info)) != OK){
+	//	return r;
+    //}
 
     printf("SUCCESS\n");
     return 100;
@@ -503,8 +525,8 @@ static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
     //printf("patch_loc empty? %d\n", &patch_addr == '\0');
 
 	struct patch_info p_info = {
-		.process_name = name_buff,
-		.function_original_address =  original_addr, // 0x0804c2e0,
+		.process_name = name_buff, //"menu",
+		.function_original_address = original_addr, //0x0804c2e0,
         .file_name = "/usr/games/menupatch",
 		.patch_size = 32,
         .virtual_memory_start = 0x8048000,
