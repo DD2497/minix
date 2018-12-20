@@ -230,7 +230,7 @@ static int get_patch_address(struct patch_info p_info){
     return -1;
 }
 
-static int inject_jump(struct patch_info p_info){//Only add the address not any jump instructions.
+static int inject_jump(struct patch_info p_info){
     int ret;
     struct jmp_inst jmp = {
         .opcode = 0xe9,
@@ -256,29 +256,6 @@ static int inject_jump(struct patch_info p_info){//Only add the address not any 
 	return OK;
 }
 
-/*static char * read_any_size_data(struct patch_info p_info, unsigned int addr, unsigned int file_location){
-    int j;
-    int patch_binary = open(p_info.file_name, O_RDONLY);
-    int done = 0;
-    int size = 64;
-    char * final_buffer;
-    while(size < FREE_SPACE){
-        size = size * 2;
-        lseek(patch_binary, file_location, SEEK_SET);
-        char data_buffer[size];
-        read(patch_binary, data_buffer, size);
-        for(j = 0; j < size; j++){
-            if(data_buffer[j] = (unsigned char) 0x00){
-                final_buffer = malloc(j);
-                strcpy(data_buffer, final_buffer, j);
-                return final_buffer
-            }
-        }
-    }
-    printf("Tried to copy data section that was to big\n");
-    return NULL
-}*/
-
 static int move_data(struct patch_info p_info, unsigned char * patch_buffer){
     int i; int j;
     int movl = 0;
@@ -293,8 +270,6 @@ static int move_data(struct patch_info p_info, unsigned char * patch_buffer){
             printf("data file location: %x\n", file_location);
 
             //Read data from file
-            //char * data_buffer = read_any_size_data(p_info, addr, file_location);
-            /*=====================================*/   //This section could be replaced by read_any_size_data()
             int patch_binary = open(p_info.file_name, O_RDONLY);
             lseek(patch_binary, file_location, SEEK_SET);
             int max_size = 128;
@@ -308,7 +283,6 @@ static int move_data(struct patch_info p_info, unsigned char * patch_buffer){
             }
             if(j == max_size)
                 data_buffer[j] = (char) 0x00;
-            /* ==================================== */
 
             //Check that there is space for the data
             data_address = data_address - max_size;
@@ -455,44 +429,34 @@ static ssize_t mpatch_read(devminor_t UNUSED(minor), u64_t position,
     return size;
 }
 
-static int parse(char* buff, int size, char* name_buff, unsigned int* patch_addr) { 
-    int r = 0; 
-    int i = 0; 
-    // Parse name_buff
-    for(; i < size; i++) { 
-        //printf("%d %c\n", i, buff[i]);
-        if (buff[i] == '\n' || buff[i] == ' ' || buff[i] == '\0') { 
-            //printf("Will break after iter\n");
-            if (i > 0) { 
-                name_buff[i] = '\0';
-                r++;
+static unsigned int parse_int(char ** buff, int * size){
+    char * nextWord;
+    unsigned int tmp_addr;
+    tmp_addr = strtol(*buff, &nextWord, 16);
+    if((nextWord - *buff) != *size){
+        *size -= nextWord - *buff + 1;
+        *buff = nextWord + 1;
+    }
+    return tmp_addr; 
+}
+
+static char * parse_string(char ** buff, int * size){
+    int i;
+    char * strPos = *buff;
+    for(i = 0; i < *size; i++){
+        if((*buff)[i] == '\n' || (*buff)[i] == ' ' || (*buff)[i] == '\0'){
+            if(i == 0){
+                errno = 1;
+                printf("No string to parse\n");
+                return *buff;
             }
-            else { 
-                return r; 
-            }
+            (*buff)[i] = '\0';
+            *buff += i + 1;
+            size -= i + 1;
             break;
         }
-        name_buff[i] = buff[i]; 
     }
-
-    for (i++; i < size && (buff[i] == ' ' || buff[i] == '\n' || buff[i] == '\0'); i++);
-
-    if (i == size) { 
-        return r; 
-    }
-
-    // Parse patch addr
-    char* end; 
-    unsigned int tmp_addr; 
-    errno = 0; 
-    tmp_addr = strtol(buff+i, &end, 16); 
-    printf("Tmp addr: %x\n", tmp_addr); 
-    if(errno || buff+i == end) { 
-        printf("[MPATCH] ERROR PARSING ADDR"); 
-        return r; 
-    }
-    *patch_addr = tmp_addr; 
-    return ++r; 
+    return strPos;
 }
 
 static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
@@ -501,41 +465,47 @@ static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
 {
     int r;
     printf("mpatch_write(position=%llu, size=%zu)\n", position, size);
-    char buff[size]; 
+    char buff[size];
     r = sys_safecopyfrom(endpt, grant, 0, (vir_bytes) buff, size);
     if (r != OK) {
         printf("[MPATCH] WARNING: couldn't copy data %d\n", r);
         return OK;
-    } 
-
-    char name_buff[128];
-    //unsigned int* patch_addr = (unsigned int*) malloc(sizeof(unsigned int)); 
-	unsigned int original_addr;
-
-    //printf("Patch_addr addr: %p\n", &patch_addr); 
-    if (parse(buff, size, name_buff, &original_addr) != 2) { 
-        printf("[MPATCH] WARNING: Could not parse input file."); 
-        return OK; 
     }
-    printf("Patch_addr value: %x\n", original_addr); 
-    //free(proc_name); 
-    //proc_name = (char*) malloc(strlen(name_buff));
-    //strcpy(proc_name, name_buff);  
-    //printf("received=%s menu?: %d\n",name_buff,!strcmp(name_buff,"menu"));
-    //printf("patch_loc empty? %d\n", &patch_addr == '\0');
 
-	struct patch_info p_info = {
-		.process_name = name_buff, //"menu",
-		.function_original_address = original_addr, //0x0804c2e0,
+    /* ================ Hardcoded version for testing ==================== */
+	/*struct patch_info p_info = {
+		.process_name = "menu",
+		.function_original_address = 0x0804c2e0,
         .file_name = "/usr/games/menupatch",
 		.patch_size = 32,
         .virtual_memory_start = 0x8048000,
         .virtual_memory_location = 0x0804c2e0,
 		.patch_address = 0 //calculated later
-	};
+	};*/
+    /* =================================================================== */
+    
+    char * input_ptr = &buff[0];
+    int tmp_size = size;
+
+    errno = 0;
+
+    struct patch_info p_info = {
+        .process_name =                 parse_string(&input_ptr, &tmp_size),
+        .function_original_address =    parse_int(&input_ptr, &tmp_size),
+        .file_name =                    parse_string(&input_ptr, &tmp_size),
+        .patch_size =                   parse_int(&input_ptr, &tmp_size),
+        .virtual_memory_start =         parse_int(&input_ptr, &tmp_size),
+        .virtual_memory_location =      parse_int(&input_ptr, &tmp_size),
+        .patch_address = 0 //calculated later
+    };
+
+    if (errno != 0) { 
+        printf("[MPATCH] WARNING: Could not parse input file."); 
+        return size; 
+    }
 
     mpatch(p_info);
-    //free(patch_addr); 
+    
     return size;
 }
 
