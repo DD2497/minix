@@ -22,9 +22,6 @@ static int sef_cb_lu_state_save(int, int);
 static int lu_state_restore(void);
 
 
-/* MPATCH */
-//static ssize_t mpatch();
-
 /** State variable to count the number of times the device has been opened.
  * Note that this is not the regular type of open counter: it never decreases.
  */
@@ -199,17 +196,18 @@ static int write_to_target(unsigned char * text, int size, int addr){
 //We should find the amount of free space dynamicly, for now it is hardcoded to 16 000 bytes
 #define FREE_SPACE 16000
 
-static int get_patch_address(struct patch_info p_info){
-    if(p_info.patch_size > FREE_SPACE){
+static int get_patch_address(struct patch_info * p_info){
+    if(p_info->patch_size > FREE_SPACE){
         printf("patch is to big, cannot patch\n");
     }
     //Dividing everything into blocks may be redundant for this small amounts of memory
     int nops = 0;
-    int block_size = (p_info.patch_size > 250) ? 4*p_info.patch_size : 1000;
+    int block_size = (p_info->patch_size > 250) ? 4*p_info->patch_size : 1000;
     int blocks = FREE_SPACE / block_size;
     
+    //Here we read block_size bytes at a time and see if we find enough space
     unsigned char text[block_size];
-    int pos = p_info.function_original_address;
+    int pos = p_info->function_original_address;
     int i; int j;
     for(i = 0; i < blocks; i++){
         pos = pos - block_size;
@@ -221,8 +219,9 @@ static int get_patch_address(struct patch_info p_info){
                 nops = 0;
             }
             //we found enough space
-            if(nops >= p_info.patch_size){
-                return pos + j;
+            if(nops >= p_info->patch_size){
+                p_info->patch_address = pos + j;
+                return OK;
             }
         }
     }
@@ -236,8 +235,8 @@ static int inject_jump(struct patch_info p_info){
         .opcode = 0xe9,
         .rel_addr = p_info.patch_address - (p_info.function_original_address + 5) // Rel addr is calculated from the instruction following the jmp
     }; 
-    printf("Opcode: 0x%x, Payload: %p\n", jmp.opcode, (void*) jmp.rel_addr);
-    printf("Opcode addr: %p, Payload addr: %p \n", &jmp.opcode, &jmp.rel_addr);
+    //printf("Opcode: 0x%x, Payload: %p\n", jmp.opcode, (void*) jmp.rel_addr);
+    //printf("Opcode addr: %p, Payload addr: %p \n", &jmp.opcode, &jmp.rel_addr);
 
     unsigned char header[32];
     read_from_target(header, 32, p_info.function_original_address);
@@ -249,7 +248,7 @@ static int inject_jump(struct patch_info p_info){
     }
     if(i == 32){
         printf("The function to be patched did not contain a 5 byte nop in it's header or had to many arguments\n");
-        return OK;
+        return i;
     }
     	
 	write_to_target((char *) &jmp, JMP_SIZE, p_info.function_original_address + i);
@@ -258,16 +257,15 @@ static int inject_jump(struct patch_info p_info){
 
 static int move_data(struct patch_info p_info, unsigned char * patch_buffer){
     int i; int j;
-    int movl = 0;
+    unsigned char movl[] = {0xc7, 0x04, 0x24};
     unsigned int data_address = p_info.patch_address;
     for(i = 0; i < p_info.patch_size-7; i++){   //-7 since movl is 7 bytes
-        if(patch_buffer[i] == (unsigned char) 0xc7 && patch_buffer[i+1] ==  
-                (unsigned char) 0x04 && patch_buffer[i+2] == (unsigned char) 0x24){
+        if(bytesEqual(&patch_buffer[i], movl, 3)){
 
             unsigned int addr = *((int*) (patch_buffer + i + 3));
             unsigned int file_location = addr - p_info.virtual_memory_start;
 
-            printf("data file location: %x\n", file_location);
+            //printf("data file location: %x\n", file_location);
 
             //Read data from file
             int patch_binary = open(p_info.file_name, O_RDONLY);
@@ -286,24 +284,22 @@ static int move_data(struct patch_info p_info, unsigned char * patch_buffer){
 
             //Check that there is space for the data
             data_address = data_address - max_size;
-            printf("data address: %x\n", data_address);
+            //printf("data address: %x\n", data_address);
             unsigned char prog_buffer[max_size];
             read_from_target(prog_buffer, max_size, data_address);
             for(j = 0; j < max_size; j++){
                 if(!(prog_buffer[j] == (unsigned char) 0x90)){
-                    //free(data_buffer);
-                    printf("couldn't find space for patch data continues without copying\n");
-                    return OK;
+                    printf("couldn't find space for patch data. Will try to continue without copying\n");
+                    return OK;  //There should be no space for any other data either so we don't break
                 }
             }
 
-            //writed the data
+            //transfer the data to the running process
             write_to_target(data_buffer, max_size, data_address);
 
-            //change the pointer to the copied data
+            //change the patch_buffer reference to the position of the copied data
             *(unsigned int *) (patch_buffer+i+3) = data_address;
             i += 6; 
-            //free(data_buffer);
         }   
     }   
     return OK;
@@ -316,6 +312,10 @@ static int inject_patch(struct patch_info p_info){
     unsigned int patch_location_in_file = p_info.virtual_memory_location - p_info.virtual_memory_start;
 	//get the code from the binary
 	int patch_binary = open(p_info.file_name, O_RDONLY);
+    if(patch_binary == -1){
+        printf("couldn't open patch_binary");
+        return -1;
+    }
 	lseek(patch_binary, patch_location_in_file, SEEK_SET);
 	read(patch_binary, patch_buffer, p_info.patch_size);
 	close(patch_binary);	
@@ -326,9 +326,9 @@ static int inject_patch(struct patch_info p_info){
 		if(patch_buffer[i] == (unsigned char) 0xe8){
 			int prev_jmp = 0;
 			prev_jmp = *((int *) (patch_buffer+i+1)); //Read next 4 bytes as int
-			printf("previous relative jump was to %x\n", prev_jmp);
+			//printf("previous relative jump was to %x\n", prev_jmp);
 			int new_jmp = prev_jmp + (p_info.function_original_address - p_info.patch_address);
-			printf("new relative jump was to %x\n", new_jmp);
+			//printf("new relative jump was to %x\n", new_jmp);
 			*((int *) (patch_buffer+i+1)) = new_jmp;//Insert the new relative jmp over the old one
 			i += 4;
 		}
@@ -337,7 +337,9 @@ static int inject_patch(struct patch_info p_info){
     //TODO move_data should belong to a get_patch function that should be called before get_patch_adress
     move_data(p_info, patch_buffer);    
 
-	write_to_target(patch_buffer, p_info.patch_size, p_info.patch_address);
+	if((ret = write_to_target(patch_buffer, p_info.patch_size, p_info.patch_address)) != OK){
+        return ret;
+    }
 
 	return OK;
 }
@@ -356,18 +358,16 @@ static int check_patch(struct patch_info p_info){
 
 //patch_orig_addr = 0x0804c2e0;
 static ssize_t mpatch(struct patch_info p_info){
-    endpoint_t mpatch_endpoint;
-    endpoint_t target_endpoint;
     int r;
     if((r = get_endpoints(p_info.process_name)) != OK){
         return r;
     }
 
-    if((p_info.patch_address = get_patch_address(p_info)) == -1){
-        return -1;
+    if((r = get_patch_address(&p_info)) != OK){
+        return r;
     }
     
-    printf("patch adress: %x\n", p_info.patch_address);
+    //printf("patch adress: %x\n", p_info.patch_address);
     //printf("Endpoint mpatch: %d, Endpoint target: %d\n",(int) mpatch_endpoint,(int) target_endpoint);
 
 	if((r = inject_patch(p_info)) != OK) {
@@ -391,14 +391,12 @@ static int mpatch_open(devminor_t UNUSED(minor), int UNUSED(access),
         endpoint_t UNUSED(user_endpt))
 {
     printf("mpatch_open(). Called %d time(s).\n", ++open_counter);
-    //proc_name = (char*) malloc(0); 
     return OK;
 }
 
 static int mpatch_close(devminor_t UNUSED(minor))
 {
     printf("mpatch_close\n");
-    //free(proc_name); 
     return OK;
 }
 
@@ -464,7 +462,7 @@ static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
         cdev_id_t UNUSED(id))
 {
     int r;
-    printf("mpatch_write(position=%llu, size=%zu)\n", position, size);
+    //printf("mpatch_write(position=%llu, size=%zu)\n", position, size);
     char buff[size];
     r = sys_safecopyfrom(endpt, grant, 0, (vir_bytes) buff, size);
     if (r != OK) {

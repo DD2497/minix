@@ -23,6 +23,7 @@
 ./usr/games/dab					games-games-bin		cxx
 ./usr/games/demo01                              games-games-bin
 ./usr/games/dm					games-games-bin
+./usr/games/do_mpatch							games-games-bin
 ./usr/games/factor				games-utils-bin
 ./usr/games/fish				games-games-bin
 ./usr/games/fortune				games-utils-bin
