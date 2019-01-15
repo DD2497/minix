@@ -191,6 +191,13 @@ static int read_from_target(unsigned char * text, int size, int addr){
 
 static int write_to_target(unsigned char * text, int size, int addr){
     cp_grant_id_t grant_id = cpf_grant_magic(mpatch_endpoint, target_endpoint, (vir_bytes) addr, size, CPF_WRITE);
+    //printf("mpatch: %d target: %d address: %x\n",(unsigned int) mpatch_endpoint,(unsigned int) target_endpoint,(unsigned int) addr);
+    /*for(int i = 0; i < size; i++){
+        if(i % 16 == 0) printf("\n");
+        else if(i % 8 == 0) printf(" ");
+        printf("%02x",text[i]);
+    }
+    printf("\n");*/
     if(grant_id < 0)
         printf("magic grant denied\n");
     int ret;
@@ -302,7 +309,7 @@ static int realaign_calls(struct patch_info p_info, unsigned char * patch_buffer
 }
 
 static int move_data(struct patch_info p_info, unsigned char * patch_buffer){
-    int patch_binary = open(p_info.origin_file, O_RDONLY);
+    int patch_binary = open(p_info.patch_file, O_RDONLY);
     if(patch_binary == -1){
         printf("couldn't open patch_binary");
         return -1;
@@ -351,6 +358,9 @@ static int move_data(struct patch_info p_info, unsigned char * patch_buffer){
                 }
             }
 
+            
+            //printf("data: %s\n",data_buffer);
+
             //transfer the data to the running process
             write_to_target(data_buffer, data_size, data_address);
 
@@ -385,6 +395,7 @@ static int inject_patch(struct patch_info p_info){
     if((ret = move_data(p_info, patch_buffer)) != OK){
         return ret;
     }
+
 
 	if((ret = write_to_target(patch_buffer, p_info.patch_size, p_info.patch_address)) != OK){
         return ret;
