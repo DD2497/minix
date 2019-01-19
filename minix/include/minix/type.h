@@ -243,6 +243,19 @@ struct minix_kerninfo {
 	volatile struct kclockinfo	*kclockinfo;	/* NOT userland ABI */
 };
 
+struct patch_info {
+    char *origin_file;
+    unsigned int function_original_address;
+    unsigned int origin_memory_start;
+    int origin_file_size;
+
+    char *patch_file;
+    int patch_size;
+    unsigned int virtual_memory_start;
+    unsigned int virtual_memory_location;
+    unsigned int patch_address;
+};
+
 #define MINIX_KIF_IPCVECS	(1L << 0)	/* minix_ipcvecs is valid */
 #define MINIX_KIF_USERINFO	(1L << 1)	/* kuserinfo is valid */
 

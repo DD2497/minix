@@ -2400,6 +2400,16 @@ typedef struct {
 } mess_vmmcp_reply;
 _ASSERT_MSG_SIZE(mess_vmmcp_reply);
 
+typedef struct {
+        endpoint_t target_endpoint;
+        struct patch_info p_info;
+        int origin_path_length;
+        int patch_path_length;
+	uint8_t padding[8];
+} mess_mp_mps_patchinfo;
+_ASSERT_MSG_SIZE(mess_mp_mps_patchinfo);
+
+
 typedef struct noxfer_message {
 	endpoint_t m_source;		/* who sent the message */
 	int m_type;			/* what kind of message is it */
@@ -2582,6 +2592,7 @@ typedef struct noxfer_message {
 		mess_mib_lsys_call	m_mib_lsys_call;
 		mess_mib_lsys_info	m_mib_lsys_info;
 		mess_mmap		m_mmap;
+		mess_mp_mps_patchinfo	m_mp_mps_patchinfo;
 		mess_ndev_netdriver_init m_ndev_netdriver_init;
 		mess_ndev_netdriver_conf m_ndev_netdriver_conf;
 		mess_ndev_netdriver_transfer m_ndev_netdriver_transfer;
