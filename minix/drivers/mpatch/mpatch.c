@@ -10,7 +10,7 @@
 #include <include/arch/i386/include/archtypes.h>
 #include "kernel/proc.h"
 #include <minix/sysinfo.h>
-#include <minix/myserver.h>
+#include <minix/mpserver.h>
 #include "servers/pm/mproc.h"
 
 #define JMP_SIZE 5
@@ -21,9 +21,6 @@ static int sef_cb_init(int type, sef_init_info_t *info);
 static int sef_cb_lu_state_save(int, int);
 static int lu_state_restore(void);
 
-
-/* MPATCH */
-//static ssize_t mpatch();
 
 /** State variable to count the number of times the device has been opened.
  * Note that this is not the regular type of open counter: it never decreases.
@@ -110,295 +107,60 @@ static struct chardriver mpatch_tab =
     .cdr_write	= mpatch_write,
 };
 
-struct patch_info {
-    char * process_name;
-    unsigned int function_original_address;
-    
-    char * file_name;
-    int patch_size;
-    unsigned int virtual_memory_start;
-    unsigned int virtual_memory_location;
-
-    unsigned int patch_address;
-};
 
 struct mproc mproc[NR_PROCS];
 
 endpoint_t mpatch_endpoint;
 endpoint_t target_endpoint;
 
-static int bytesEqual(unsigned char * first, unsigned char * second, int length){
-    int i;
-    for(i = 0; i < length; i++){
-        if(first[i] != second[i])
-            return 0;
+static int get_endpoints(char * file_name){
+    //Get process name from the file name
+    char * process_name = file_name;
+    int i = 0;
+    while(file_name[i] != '\0'){
+        if(file_name[i] == '/'){
+            process_name = file_name + i + 1;
+        }
+        i++;
     }
-    return 1;
-}
 
-static int get_endpoints(char *target_name){
+//get the PM process table
 	int r = getsysinfo(PM_PROC_NR, SI_PROC_TAB, mproc, sizeof(mproc));
 	if (r != OK) {
 		printf("MPATCH: warning: couldn't get copy of PM process table: %d\n", r);
 		return 1;
 	}
-
+    //Find endpoints of desired processes
 	mpatch_endpoint = -1; target_endpoint = -1;
 	for (int mslot = 0; mslot < NR_PROCS; mslot++) {
 		if (mproc[mslot].mp_flags & IN_USE) {
 			if (!strcmp(mproc[mslot].mp_name, "mpatch"))
 				mpatch_endpoint = mproc[mslot].mp_endpoint;
-			if (!strcmp(mproc[mslot].mp_name, target_name))
+			if (!strcmp(mproc[mslot].mp_name, process_name))
 				target_endpoint = mproc[mslot].mp_endpoint;
 		}
 	}
 	if(target_endpoint == -1){
-		printf("Process %s was not found\n", target_name);
+		printf("Process %s was not found\n", process_name);
 		return -1;
 	}
 	return OK;
 }
 
-struct jmp_inst { 
-    unsigned char opcode; 
-    unsigned int  rel_addr; 
-}__attribute__((packed));
 
-static int read_from_target(unsigned char * text, int size, int addr){
-     cp_grant_id_t grant_id = cpf_grant_magic(mpatch_endpoint, target_endpoint, (vir_bytes) addr, size, CPF_READ);
-    if(grant_id < 0){
-        printf("magic grant denied\n");
-        return grant_id;
-    }
-    int ret;
-    if((ret = sys_safecopyfrom(mpatch_endpoint, grant_id, 0, (vir_bytes) text, size)) != OK){
-        printf("safecopy failed: %d\n",ret);
-        return ret;
-    }
-    if((ret = cpf_revoke(grant_id)) != OK) 
-        printf("Revoke failed");
-    return OK;
-}
 
-static int write_to_target(unsigned char * text, int size, int addr){
-    cp_grant_id_t grant_id = cpf_grant_magic(mpatch_endpoint, target_endpoint, (vir_bytes) addr, size, CPF_WRITE);
-    if(grant_id < 0)
-        printf("magic grant denied\n");
-    int ret;
-    if ((ret = sys_safecopyto(mpatch_endpoint, grant_id, 0, (vir_bytes) text, size)) != OK){
-        printf("safecopy failed: %d\n",ret);
-        return ret;
-    }
-    if((ret = cpf_revoke(grant_id)) != OK){
-        printf("REVOKE FAILED");
-        return ret;
-    }
-    return OK;
-}
-
-//We should find the amount of free space dynamicly, for now it is hardcoded to 16 000 bytes
-#define FREE_SPACE 16000
-
-static int get_patch_address(struct patch_info p_info){
-    if(p_info.patch_size > FREE_SPACE){
-        printf("patch is to big, cannot patch\n");
-    }
-    //Dividing everything into blocks may be redundant for this small amounts of memory
-    int nops = 0;
-    int block_size = (p_info.patch_size > 250) ? 4*p_info.patch_size : 1000;
-    int blocks = FREE_SPACE / block_size;
-    
-    unsigned char text[block_size];
-    int pos = p_info.function_original_address;
-    int i; int j;
-    for(i = 0; i < blocks; i++){
-        pos = pos - block_size;
-        read_from_target(text, block_size, pos);
-        for(j = block_size - 1; j >= 0; j--){
-            if(text[j] == (unsigned char) 0x90){
-                nops++;
-            } else {
-                nops = 0;
-            }
-            //we found enough space
-            if(nops >= p_info.patch_size){
-                return pos + j;
-            }
-        }
-    }
-    printf("Couldn't find space for patch\n");
-    return -1;
-}
-
-static int inject_jump(struct patch_info p_info){
-    int ret;
-    struct jmp_inst jmp = {
-        .opcode = 0xe9,
-        .rel_addr = p_info.patch_address - (p_info.function_original_address + 5) // Rel addr is calculated from the instruction following the jmp
-    }; 
-    printf("Opcode: 0x%x, Payload: %p\n", jmp.opcode, (void*) jmp.rel_addr);
-    printf("Opcode addr: %p, Payload addr: %p \n", &jmp.opcode, &jmp.rel_addr);
-
-    unsigned char header[32];
-    read_from_target(header, 32, p_info.function_original_address);
-    int i;
-    unsigned char nop5[] = {0x0f, 0x1f, 0x44, 0x00, 0x00};
-    for (i = 0; i < 32; i++){
-        if(bytesEqual(&header[i], nop5, 5))
-            break;
-    }
-    if(i == 32){
-        printf("The function to be patched did not contain a 5 byte nop in it's header or had to many arguments\n");
-        return OK;
-    }
-    	
-	write_to_target((char *) &jmp, JMP_SIZE, p_info.function_original_address + i);
-	return OK;
-}
-
-static int move_data(struct patch_info p_info, unsigned char * patch_buffer){
-    int i; int j;
-    int movl = 0;
-    unsigned int data_address = p_info.patch_address;
-    for(i = 0; i < p_info.patch_size-7; i++){   //-7 since movl is 7 bytes
-        if(patch_buffer[i] == (unsigned char) 0xc7 && patch_buffer[i+1] ==  
-                (unsigned char) 0x04 && patch_buffer[i+2] == (unsigned char) 0x24){
-
-            unsigned int addr = *((int*) (patch_buffer + i + 3));
-            unsigned int file_location = addr - p_info.virtual_memory_start;
-
-            printf("data file location: %x\n", file_location);
-
-            //Read data from file
-            int patch_binary = open(p_info.file_name, O_RDONLY);
-            lseek(patch_binary, file_location, SEEK_SET);
-            int max_size = 128;
-            char data_buffer[max_size];
-            read(patch_binary, data_buffer, max_size);
-            for(j = 0; j < max_size; j++){
-                if(data_buffer[j] == (unsigned char) 0x00){
-                    max_size = j + 1;
-                    break;
-                }
-            }
-            if(j == max_size)
-                data_buffer[j] = (char) 0x00;
-
-            //Check that there is space for the data
-            data_address = data_address - max_size;
-            printf("data address: %x\n", data_address);
-            unsigned char prog_buffer[max_size];
-            read_from_target(prog_buffer, max_size, data_address);
-            for(j = 0; j < max_size; j++){
-                if(!(prog_buffer[j] == (unsigned char) 0x90)){
-                    //free(data_buffer);
-                    printf("couldn't find space for patch data continues without copying\n");
-                    return OK;
-                }
-            }
-
-            //writed the data
-            write_to_target(data_buffer, max_size, data_address);
-
-            //change the pointer to the copied data
-            *(unsigned int *) (patch_buffer+i+3) = data_address;
-            i += 6; 
-            //free(data_buffer);
-        }   
-    }   
-    return OK;
-}
-
-static int inject_patch(struct patch_info p_info){
-	unsigned char patch_buffer[p_info.patch_size];
-	int ret;
-
-    unsigned int patch_location_in_file = p_info.virtual_memory_location - p_info.virtual_memory_start;
-	//get the code from the binary
-	int patch_binary = open(p_info.file_name, O_RDONLY);
-	lseek(patch_binary, patch_location_in_file, SEEK_SET);
-	read(patch_binary, patch_buffer, p_info.patch_size);
-	close(patch_binary);	
-
-	//fix addresses of calls
-	int i; int j;
-	for(i = 0; i < p_info.patch_size; i++){
-		if(patch_buffer[i] == (unsigned char) 0xe8){
-			int prev_jmp = 0;
-			prev_jmp = *((int *) (patch_buffer+i+1)); //Read next 4 bytes as int
-			printf("previous relative jump was to %x\n", prev_jmp);
-			int new_jmp = prev_jmp + (p_info.function_original_address - p_info.patch_address);
-			printf("new relative jump was to %x\n", new_jmp);
-			*((int *) (patch_buffer+i+1)) = new_jmp;//Insert the new relative jmp over the old one
-			i += 4;
-		}
-	}
-
-    //TODO move_data should belong to a get_patch function that should be called before get_patch_adress
-    move_data(p_info, patch_buffer);    
-
-	write_to_target(patch_buffer, p_info.patch_size, p_info.patch_address);
-
-	return OK;
-}
-
-static int check_patch(struct patch_info p_info){
-	unsigned char text[p_info.patch_size];
-	read_from_target(text, p_info.patch_size, p_info.patch_address);
-	
-    //print patch code
-	int i;
-	for(i = 0; i < p_info.patch_size; i++)
-		printf("%02X ", text[i]);
-	printf("\n");
-	return OK;
-}
-
-//patch_orig_addr = 0x0804c2e0;
-static ssize_t mpatch(struct patch_info p_info){
-    endpoint_t mpatch_endpoint;
-    endpoint_t target_endpoint;
-    int r;
-    if((r = get_endpoints(p_info.process_name)) != OK){
-        return r;
-    }
-
-    if((p_info.patch_address = get_patch_address(p_info)) == -1){
-        return -1;
-    }
-    
-    printf("patch adress: %x\n", p_info.patch_address);
-    //printf("Endpoint mpatch: %d, Endpoint target: %d\n",(int) mpatch_endpoint,(int) target_endpoint);
-
-	if((r = inject_patch(p_info)) != OK) {
-		return r;
-    }
-
-    if((r = inject_jump(p_info)) != OK){
-        return r;
-    }
-
-	//if((r = check_patch(p_info)) != OK){
-	//	return r;
-    //}
-
-    printf("SUCCESS\n");
-    return 100;
-}
 
 //char* proc_name = NULL; 
 static int mpatch_open(devminor_t UNUSED(minor), int UNUSED(access),
         endpoint_t UNUSED(user_endpt))
 {
     printf("mpatch_open(). Called %d time(s).\n", ++open_counter);
-    //proc_name = (char*) malloc(0); 
     return OK;
 }
 
 static int mpatch_close(devminor_t UNUSED(minor))
 {
     printf("mpatch_close\n");
-    //free(proc_name); 
     return OK;
 }
 
@@ -410,7 +172,6 @@ static ssize_t mpatch_read(devminor_t UNUSED(minor), u64_t position,
     char *ptr;
     int ret;
     char *buf = MPATCH_MSG;
-    printf("mpatch_read()\n");
 
     /* This is the total size of our device. */
     dev_size = (u64_t) strlen(buf);
@@ -452,7 +213,7 @@ static char * parse_string(char ** buff, int * size){
             }
             (*buff)[i] = '\0';
             *buff += i + 1;
-            size -= i + 1;
+            *size -= i + 1;
             break;
         }
     }
@@ -464,7 +225,6 @@ static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
         cdev_id_t UNUSED(id))
 {
     int r;
-    printf("mpatch_write(position=%llu, size=%zu)\n", position, size);
     char buff[size];
     r = sys_safecopyfrom(endpt, grant, 0, (vir_bytes) buff, size);
     if (r != OK) {
@@ -472,40 +232,34 @@ static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
         return OK;
     }
 
-    /* ================ Hardcoded version for testing ==================== */
-	/*struct patch_info p_info = {
-		.process_name = "menu",
-		.function_original_address = 0x0804c2e0,
-        .file_name = "/usr/games/menupatch",
-		.patch_size = 32,
-        .virtual_memory_start = 0x8048000,
-        .virtual_memory_location = 0x0804c2e0,
-		.patch_address = 0 //calculated later
-	};*/
-    /* =================================================================== */
-    
-    char * input_ptr = &buff[0];
+    char * input_ptr = buff;
     int tmp_size = size;
 
     errno = 0;
 
     struct patch_info p_info = {
-        .process_name =                 parse_string(&input_ptr, &tmp_size),
+        .origin_file =                  parse_string(&input_ptr, &tmp_size),
         .function_original_address =    parse_int(&input_ptr, &tmp_size),
-        .file_name =                    parse_string(&input_ptr, &tmp_size),
+        .origin_memory_start =          parse_int(&input_ptr, &tmp_size),
+        .origin_file_size = 0,
+        .patch_file =                   parse_string(&input_ptr, &tmp_size),
         .patch_size =                   parse_int(&input_ptr, &tmp_size),
         .virtual_memory_start =         parse_int(&input_ptr, &tmp_size),
         .virtual_memory_location =      parse_int(&input_ptr, &tmp_size),
         .patch_address = 0 //calculated later
     };
-
-    if (errno != 0) { 
-        printf("[MPATCH] WARNING: Could not parse input file."); 
-        return size; 
+    
+    if (errno != 0) {
+        printf("[MPATCH] WARNING: Could not parse input file.\n");
+        return size;
     }
 
-    mpatch(p_info);
-    
+    if((r = get_endpoints(p_info.origin_file)) != OK){
+        return r;
+    }
+
+    mpserver_sys1(mpatch_endpoint,target_endpoint,p_info);
+
     return size;
 }
 

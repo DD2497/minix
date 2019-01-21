@@ -32,6 +32,7 @@ SRCS+=  \
 	kputc.c \
 	kputs.c \
 	mapdriver.c \
+	mpserver.c \
 	myserver.c \
 	optset.c \
 	panic.c \
