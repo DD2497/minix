@@ -1,0 +1,83 @@
+How to run mpatch after booting minix:
+
+1 run the program that you wish to patch. (If the program is not running it cannot be patched)
+
+2 run do_mpatch. It is located in /usr/games
+
+3 do_mpatch will prompt the user for the neccessary information. The path names can either be relative or absolute.
+
+4 if the terminal prints SUCCESS running program should now be patched.
+
+
+To write a program that can be patched with mpatch:
+
+To add NOP5 instructions the following macro can be used.
+
+#define NOP5    asm(".skip 0x1, 0x0f"); \
+				asm(".skip 0x1, 0x1f"); \
+				asm(".skip 0x1, 0x44"); \
+				asm(".skip 0x2, 0x00");
+
+With this macro just write NOP5 as the first line inside a function.
+
+
+
+To create free space in the .start area write the following line at the bottom of the c file.
+
+asm(".skip 0x4000 , 0x90");
+
+Make sure to not write the line inside any function.
+
+
+
+To make sure a function is acctually called and not just has its' instructions added to its' caller
+write the following instruction before its* decleration.
+
+__attribute__((noinline))
+
+
+for an example see minix/games/menu/menu.c
+
+When writing your own program be aware that there are many things that may go wrong.
+The C compiler optimize many things including addresses. 
+If a program is unable to patch it may be advisable to use objdump -d on the ELF files 
+to find if the program is acctually dependant on outside factors even though it shouldn't be.  
+
+
+Below is an example of how to run mpatch on a testprogram called menu.
+
+(user) alt + ->					(switch workspace to start seperate process)
+
+(user) /usr/games/menu			(start the menu program for testing)
+
+(user) print 					(tell menu to execute it's print function)
+
+(minix) UNPATCHED!!!!!
+
+(user) alt + <-					(switch workspace to start mpatch)
+
+(user) cd /usr/games
+
+(user) ./do_mpatch
+
+(minix) write the path of the running binary
+
+(user) menu
+
+(minix) write the path of the file that contains the patch
+
+(user) menupatch
+
+(minix) write the name of the function that is to be patched
+
+(user) print1
+
+(minix) MPATCH is running
+(minix) SUCCESS
+
+(user) alt + ->
+
+(user) print
+
+(minix) patched from menupatch
+
