@@ -72,6 +72,10 @@ Below is an example of how to run mpatch on a testprogram called menu.
 
 (user) print1
 
+(minix) write the signature of the patch (in hex)
+
+(user) 15
+
 (minix) MPATCH is running
 (minix) SUCCESS
 

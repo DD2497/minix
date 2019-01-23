@@ -16,22 +16,21 @@ struct patch_info {
     unsigned int virtual_memory_location;
 };
 
-int get_input(char * file_name, char * patch_file, char * function_name);
+int get_input(char * file_name, char * patch_file, char * function_name, char * sign);
 int get_procces_name(char * file_name, struct patch_info * info);
 int get_func_info(char* file, char* funcName, unsigned int * addr, int * size);
 int get_patch_start(char * patch_file, unsigned int * memory_start);
-int do_mpatch(struct patch_info info);
+int do_mpatch(struct patch_info info, char signature);
 
-
-
-
-int get_input(char * file_name, char * patch_file, char * function_name){
+int get_input(char * file_name, char * patch_file, char * function_name, char * sign){
     printf("write the path of the running binary\n");
     scanf("%s", file_name);
     printf("write the path of the file that contains the patch\n");
     scanf("%s", patch_file);
     printf("write the name of the function that is to be patched\n");
     scanf("%s", function_name);
+    printf("write the signature of the patch (in hex)\n");
+    scanf("%s",sign);
     return 0;
 }
 
@@ -108,10 +107,10 @@ int get_patch_start(char * patch_file, unsigned int * memory_start){
     return 0;
 }
 
-int do_mpatch(struct patch_info info){
+int do_mpatch(struct patch_info info, char signature){
     char str[PATH_MAX * 2 + 16];
-    sprintf(str, "%s %x %x %s %x %x %x\n", info.process_name, info.function_original_address, info.origin_memory_start, 
-        info.file_name, info.patch_size, info.virtual_memory_start, info.virtual_memory_location);
+    sprintf(str, "%s %x %x %s %x %x %x %c\n", info.process_name, info.function_original_address, info.origin_memory_start, 
+        info.file_name, info.patch_size, info.virtual_memory_start, info.virtual_memory_location, signature);
     FILE * fp;
     fp = fopen("/dev/mpatch", "w");
     fprintf(fp, "%s", str);
@@ -126,10 +125,11 @@ int main(){
 
     char origin_path[PATH_MAX];
     char patch_path[PATH_MAX];
+    char sign[2]; 
 
     struct patch_info info;
 
-    get_input(origin_file, patch_file, function_name);
+    get_input(origin_file, patch_file, function_name, sign);
 
     if(realpath(origin_file, origin_path) == NULL){
         printf("Couldn't find the file which contains the patch\n");
@@ -163,6 +163,9 @@ int main(){
         return 1;
     }
 
-    do_mpatch(info);
+    // Convert sign to single char
+    char signature = (char) strtol(sign, NULL, 16); 
+
+    do_mpatch(info, signature);
 	return 0;
 }

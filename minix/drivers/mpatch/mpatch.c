@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <minix/syslib.h>
 #include <minix/chardriver.h>
 #include "mpatch.h"
@@ -14,6 +17,7 @@
 #include "servers/pm/mproc.h"
 
 #define JMP_SIZE 5
+#define SIGN_KEY 0xFA
 
 /* SEF functions and variables. */
 static void sef_local_startup(void);
@@ -112,6 +116,46 @@ struct mproc mproc[NR_PROCS];
 
 endpoint_t mpatch_endpoint;
 endpoint_t target_endpoint;
+
+static char* read_file(char* file_name, long long bytes) { 
+    int fd = open(file_name, O_RDONLY); 
+
+    char ch; 
+    char *buffer = (char*) malloc(bytes); 
+    read(fd, buffer, bytes); 
+    close(fd); 
+    return buffer; 
+}
+
+/** 
+ * Bad but simple hash function.  
+ * Replace with Sha2 or similar in real application. 
+ */
+static char hash(char seed, char* msg, long long size) { 
+    char h = seed; 
+    for (int i = 0; i<size; i++) { 
+        int tmp = msg[i]; 
+        tmp += h; 
+        tmp = tmp % 0x100;
+        h = tmp; 
+    }
+    return h; 
+}
+
+static char int_hash(char seed, unsigned int msg) { 
+    char msg_arr[2]; 
+    msg_arr[0] = (char) (msg & 0xff);
+    msg_arr[1] = (char) ((msg & 0xff) >> 8);
+    return hash(seed, msg_arr, 2); 
+}
+
+/** 
+ * Bad but simple decryption. 
+ * Use with RSA-key or similar in a real application 
+ */
+static char unsign(char msg) { 
+    return msg^SIGN_KEY; 
+}
 
 static int get_endpoints(char * file_name){
     //Get process name from the file name
@@ -248,6 +292,9 @@ static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
         .virtual_memory_location =      parse_int(&input_ptr, &tmp_size),
         .patch_address = 0 //calculated later
     };
+
+    char signature = parse_string(&input_ptr, &tmp_size)[0]; 
+
     
     if (errno != 0) {
         printf("[MPATCH] WARNING: Could not parse input file.\n");
@@ -256,6 +303,31 @@ static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
 
     if((r = get_endpoints(p_info.origin_file)) != OK){
         return r;
+    }
+
+    // Use stat to get the size of the patch file 
+    struct stat st;
+    stat(p_info.patch_file, &st);
+    // Get the patch file binary 
+    char *patch_binary = read_file(p_info.patch_file, st.st_size); 
+    // Hash the patch file and attributes.   
+    char patch_hash = hash('r', patch_binary, st.st_size);  
+    patch_hash = hash(patch_hash, p_info.origin_file, strlen(p_info.origin_file));  
+    patch_hash = int_hash(patch_hash, p_info.function_original_address); 
+    patch_hash = int_hash(patch_hash, p_info.origin_memory_start); 
+    patch_hash = int_hash(patch_hash, p_info.origin_file_size); 
+    patch_hash = hash(patch_hash, p_info.patch_file, strlen(p_info.patch_file));  
+    patch_hash = int_hash(patch_hash, p_info.patch_size); 
+    patch_hash = int_hash(patch_hash, p_info.virtual_memory_start); 
+    patch_hash = int_hash(patch_hash, p_info.virtual_memory_location); 
+
+    // Free used resources
+    free(patch_binary); 
+
+    // Verify 
+    if (patch_hash != unsign(signature)) {
+        printf("[MPATCH] Signature does not match! Patch denied!\n"); 
+        return size; 
     }
 
     mpserver_sys1(mpatch_endpoint,target_endpoint,p_info);
