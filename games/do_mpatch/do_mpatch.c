@@ -20,18 +20,18 @@ struct patch_info {
     unsigned int virtual_memory_location;
 };
 
-int get_input(pid_t * pid, char * file_name, char * patch_file, char * function_name);
+int get_input(pid_t * pid, char * file_name, char * patch_file, char * function_name, char * sign);
 int get_procces_name(char * file_name, struct patch_info * info);
 int get_func_info(char* file, char* funcName, unsigned int * addr, int * size);
 int get_patch_start(char * patch_file, unsigned int * memory_start);
 int is_patchable(struct patch_info info, pid_t pid, int patch_size );
 int stop_ptrace(pid_t pid);
-int do_mpatch(struct patch_info info);
+int do_mpatch(struct patch_info info, char signature);
 
 
 
 
-int get_input(pid_t* pid, char * file_name, char * patch_file, char * function_name){
+int get_input(pid_t* pid, char * file_name, char * patch_file, char * function_name, char * sign){
 
     printf("write the PID of the process to be patched\n");
     int process_id; 
@@ -40,7 +40,6 @@ int get_input(pid_t* pid, char * file_name, char * patch_file, char * function_n
         process_id = -1;
             while (fgetc(stdin) != '\n'); // Read until a newline is found
     }
-    // cast process_id to pid
     *pid = process_id;
 
     printf("write the path of the running binary\n");
@@ -49,6 +48,8 @@ int get_input(pid_t* pid, char * file_name, char * patch_file, char * function_n
     scanf("%s", patch_file);
     printf("write the name of the function that is to be patched\n");
     scanf("%s", function_name);
+    printf("write the signature of the patch (in hex)\n");
+    scanf("%s",sign);
     return 0;
 }
 
@@ -169,10 +170,10 @@ int stop_ptrace(pid_t pid) {
     return status;
 }
 
-int do_mpatch(struct patch_info info){
+int do_mpatch(struct patch_info info, char signature){
     char str[PATH_MAX * 2 + 16];
-    sprintf(str, "%s %x %x %s %x %x %x\n", info.process_name, info.function_original_address, info.origin_memory_start, 
-        info.file_name, info.patch_size, info.virtual_memory_start, info.virtual_memory_location);
+    sprintf(str, "%s %x %x %s %x %x %x %c\n", info.process_name, info.function_original_address, info.origin_memory_start, 
+        info.file_name, info.patch_size, info.virtual_memory_start, info.virtual_memory_location, signature);
     FILE * fp;
     fp = fopen("/dev/mpatch", "w");
     fprintf(fp, "%s", str);
@@ -187,11 +188,12 @@ int main(){
 
     char origin_path[PATH_MAX];
     char patch_path[PATH_MAX];
+    char sign[2]; 
 
     struct patch_info info;
     pid_t pid;
 
-    get_input(&pid, origin_file, patch_file, function_name);
+    get_input(&pid, origin_file, patch_file, function_name, sign);
 
     if(realpath(origin_file, origin_path) == NULL){
         printf("Couldn't find the file which contains the patch\n");
@@ -230,11 +232,15 @@ int main(){
     // Pause process and ensure that it is not currently in the function
     if (is_patchable(info, pid, function_size)) {
         // Process safe to patch - proceed
-        do_mpatch(info);
+    // Convert sign to single char
+    char signature = (char) strtol(sign, NULL, 16); 
+        do_mpatch(info, signature);
     }
     // Resume process if paused 
     if (is_proc_paused) {
         stop_ptrace(pid);       
     }
+
+
 	return 0;
 }
