@@ -200,6 +200,7 @@ int do_trace(struct proc * caller, message * m_ptr)
 	break;
 
   default:
+    printf("operation not implemented\n");
 	return(EINVAL);
   }
   return(OK);

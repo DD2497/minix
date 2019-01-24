@@ -11,7 +11,9 @@ __attribute__((noinline)) void print1(void);
 
 void print1(){
 	NOP5
-	printf("UNPATCHED!!!!!\n");
+    for(int i = 0; i <10000000; i++) {
+	    printf("UNPATCHED!!!!!\n");
+    }
 }
 
 int main() {

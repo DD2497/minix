@@ -2,8 +2,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <errno.h> // for errno (believe it or not)
+#include <sys/ptrace.h> // for ptrace, also imports reg struct
 
 #define string_size 64
+
+int is_proc_paused; // Keeps track if the process to be patched is paused
 
 struct patch_info {
     char * process_name;
@@ -16,16 +20,29 @@ struct patch_info {
     unsigned int virtual_memory_location;
 };
 
-int get_input(char * file_name, char * patch_file, char * function_name);
+int get_input(pid_t * pid, char * file_name, char * patch_file, char * function_name);
 int get_procces_name(char * file_name, struct patch_info * info);
 int get_func_info(char* file, char* funcName, unsigned int * addr, int * size);
 int get_patch_start(char * patch_file, unsigned int * memory_start);
+int is_patchable(struct patch_info info, pid_t pid, int patch_size );
+int stop_ptrace(pid_t pid);
 int do_mpatch(struct patch_info info);
 
 
 
 
-int get_input(char * file_name, char * patch_file, char * function_name){
+int get_input(pid_t* pid, char * file_name, char * patch_file, char * function_name){
+
+    printf("write the PID of the process to be patched\n");
+    int process_id; 
+    int result = scanf("%u", &process_id);
+    if (result == 0) {
+        process_id = -1;
+            while (fgetc(stdin) != '\n'); // Read until a newline is found
+    }
+    // cast process_id to pid
+    *pid = process_id;
+
     printf("write the path of the running binary\n");
     scanf("%s", file_name);
     printf("write the path of the file that contains the patch\n");
@@ -108,6 +125,50 @@ int get_patch_start(char * patch_file, unsigned int * memory_start){
     return 0;
 }
 
+int is_patchable(struct patch_info info, pid_t pid, int patch_size) {
+  // malloc(sizeof(struct reg));
+   struct reg registers;
+   // Begin tracing the process
+   int status;
+   status = ptrace(PT_ATTACH, pid, NULL, 0);
+   if (errno == ESRCH) {
+        printf("No process with pid:%u found - EXITING!\n", pid);
+        return 0;
+   }
+    printf("Status:%d, errno:%d \n", status, errno);
+   is_proc_paused = 1;
+   // The third argument tells ptrace where to save the registers
+   status = ptrace(T_GETUSER, pid, &registers, 0);
+   //registers = (struct reg) data;
+   unsigned int r_eip = registers.r_eip;
+   unsigned int r_ebp = registers.r_ebp;
+    printf("Status:%d, errno:%d \n", status, errno);
+
+    printf("Instruction pointer:%u, func_addr: %u, size of func: %d\n", r_eip, info.function_original_address, patch_size);
+   
+   // Check that instruction pointer is not currently within function
+    if ( !(r_eip < info.function_original_address  || r_eip > (info.function_original_address + patch_size) ) ) {   
+        printf("Function in use, unsafe to apply patch - EXITING!\n");
+        return 0;
+    }
+    unsigned int ret_addr = 0;
+    // Apparently, PT_READ_D returns the data from the method
+    ret_addr = ptrace(PT_READ_D, pid,(void*) (r_ebp + 4), ret_addr);
+    // Check that return addr from current function is not in the function we want to patch
+    if ( !(ret_addr < info.function_original_address || ret_addr > ( info.function_original_address + patch_size))) {   
+    printf("Function in use, unsafe to apply patch - EXITING!\n");
+        return 0;
+    }
+    printf("Function not in use, safe to apply patch!\n");
+    return 1;
+}
+
+int stop_ptrace(pid_t pid) {
+    int status = ptrace(PT_DETACH, pid, NULL, 0);
+    is_proc_paused = 0;
+    return status;
+}
+
 int do_mpatch(struct patch_info info){
     char str[PATH_MAX * 2 + 16];
     sprintf(str, "%s %x %x %s %x %x %x\n", info.process_name, info.function_original_address, info.origin_memory_start, 
@@ -128,8 +189,9 @@ int main(){
     char patch_path[PATH_MAX];
 
     struct patch_info info;
+    pid_t pid;
 
-    get_input(origin_file, patch_file, function_name);
+    get_input(&pid, origin_file, patch_file, function_name);
 
     if(realpath(origin_file, origin_path) == NULL){
         printf("Couldn't find the file which contains the patch\n");
@@ -162,7 +224,17 @@ int main(){
         printf("Error when reading file containing the patch, exiting\n");
         return 1;
     }
-
-    do_mpatch(info);
+    unsigned int temp;
+    int function_size;
+    get_func_info(origin_file, function_name, &temp , &function_size);
+    // Pause process and ensure that it is not currently in the function
+    if (is_patchable(info, pid, function_size)) {
+        // Process safe to patch - proceed
+        do_mpatch(info);
+    }
+    // Resume process if paused 
+    if (is_proc_paused) {
+        stop_ptrace(pid);       
+    }
 	return 0;
 }
