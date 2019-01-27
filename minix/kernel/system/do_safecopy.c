@@ -215,11 +215,11 @@ int verify_grant(
 		*offset_result = g.cp_u.cp_direct.cp_start + offset_in;
 		*e_granter = granter;
 	} else if(g.cp_flags & CPF_MAGIC) {
-		/* Currently, it is hardcoded that only VFS and MIB may do
-		 * magic grants.  TODO: this should be a system.conf flag.
+		/* Currently, it is hardcoded that only VFS, MIB and Mpatch may
+                 * do magic grants.  TODO: this should be a system.conf flag.
 		 */
 		if(granter != VFS_PROC_NR && granter != MIB_PROC_NR && \
-				granter != MPSERVER_PROC_NR) {	//This makes the entire system unsafe!!!!!!!!!
+				granter != MPSERVER_PROC_NR) {
 			printf(
 		"verify_grant: magic grant verify failed: granter (%d) "
 		"not allowed\n", granter);
