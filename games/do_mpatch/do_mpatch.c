@@ -14,13 +14,17 @@ int do_mpatch(struct patch_info info, char signature);
 
 int get_input(char * file_name, char * patch_file, char * function_name, char * sign){
     printf("write the path of the running binary\n");
-    scanf("%s", file_name);
+    scanf("%63s", file_name);
     printf("write the path of the file that contains the patch\n");
-    scanf("%s", patch_file);
+    scanf("%63s", patch_file);
     printf("write the name of the function that is to be patched\n");
-    scanf("%s", function_name);
-    printf("write the signature of the patch (in hex)\n");
-    scanf("%s",sign);
+    scanf("%63s", function_name);
+    printf("write the signing key in hex\n");
+    scanf("%2s",sign);
+    file_name[63] = '\0';
+    patch_file[63] = '\0';
+    function_name[63] = '\0';
+    sign[2] = '\0';
     return 0;
 }
 
@@ -93,6 +97,78 @@ int do_mpatch(struct patch_info info, char signature){
     return 0;
 }
 
+static char* read_file(char* file_name, long *patch_size) { 
+    FILE *fp;
+    fp = fopen(file_name, "r");
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    char *buffer = (char*) malloc(size);
+
+    fread(buffer, sizeof(char), size, fp);
+
+    fclose(fp);
+
+    *patch_size = size;
+
+    return buffer; 
+}
+
+/** 
+ * Bad but simple hash function.  
+ * Replace with Sha2 or similar in real application. 
+ */
+static char hash(char seed, char* msg, long long size) { 
+    char h = seed; 
+    for (int i = 0; i<size; i++) { 
+        int tmp = msg[i]; 
+        tmp += h; 
+        tmp = tmp % 0x100;
+        h = tmp; 
+    }
+    return h; 
+}
+
+static char int_hash(char seed, unsigned int msg) { 
+    char msg_arr[4];
+    msg_arr[0] = (unsigned char) (msg & 0xFF);
+    msg_arr[1] = (unsigned char) ((msg & 0xFF00) >> 8);
+    msg_arr[2] = (unsigned char) ((msg & 0xFF0000) >> 16);
+    msg_arr[3] = (unsigned char) ((msg & 0xFF000000) >> 24);
+    return hash(seed, msg_arr, 4); 
+}
+
+/** 
+ * Bad but simple decryption. 
+ * Use with RSA-key or similar in a real application 
+ */
+static char sign(char msg,char key) { 
+    return msg^key; 
+}
+
+static char create_signature(char key, struct patch_info p_info){
+    // Patch file size used for hashing.
+    long patch_size = 0;
+    // Get the patch file binary.
+    char *patch_binary = read_file(p_info.patch_file,&patch_size); 
+    // Hash the patch file and attributes.   
+    char patch_hash = hash('r', patch_binary, patch_size);  
+    patch_hash = hash(patch_hash, p_info.origin_file, strlen(p_info.origin_file));  
+    patch_hash = int_hash(patch_hash, p_info.function_original_address); 
+    patch_hash = int_hash(patch_hash, p_info.origin_memory_start); 
+    patch_hash = int_hash(patch_hash, p_info.origin_file_size); 
+    patch_hash = hash(patch_hash, p_info.patch_file, strlen(p_info.patch_file));  
+    patch_hash = int_hash(patch_hash, p_info.patch_size); 
+    patch_hash = int_hash(patch_hash, p_info.virtual_memory_start); 
+    patch_hash = int_hash(patch_hash, p_info.virtual_memory_location); 
+
+    // Free used resources
+    free(patch_binary);
+
+    return sign(patch_hash,key);
+}
+
 int main(){
     char origin_file[string_size];
     char patch_file[string_size];
@@ -100,11 +176,11 @@ int main(){
 
     char origin_path[PATH_MAX];
     char patch_path[PATH_MAX];
-    char sign[2]; 
+    char key_s[3]; 
 
     struct patch_info info;
 
-    get_input(origin_file, patch_file, function_name, sign);
+    get_input(origin_file, patch_file, function_name, key_s);
 
     if(realpath(origin_file, origin_path) == NULL){
         printf("Couldn't find the file which contains the patch\n");
@@ -139,7 +215,9 @@ int main(){
     }
 
     // Convert sign to single char
-    char signature = (char) strtol(sign, NULL, 16); 
+    char key = (char) strtol(key_s, NULL, 16);
+
+    char signature = create_signature(key,info);
 
     do_mpatch(info, signature);
 	return 0;

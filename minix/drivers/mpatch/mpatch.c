@@ -119,8 +119,6 @@ endpoint_t target_endpoint;
 
 static char* read_file(char* file_name, long long bytes) { 
     int fd = open(file_name, O_RDONLY); 
-
-    char ch; 
     char *buffer = (char*) malloc(bytes); 
     read(fd, buffer, bytes); 
     close(fd); 
@@ -143,18 +141,20 @@ static char hash(char seed, char* msg, long long size) {
 }
 
 static char int_hash(char seed, unsigned int msg) { 
-    char msg_arr[2]; 
-    msg_arr[0] = (char) (msg & 0xff);
-    msg_arr[1] = (char) ((msg & 0xff) >> 8);
-    return hash(seed, msg_arr, 2); 
+    unsigned char msg_arr[4];
+    msg_arr[0] = (unsigned char) (msg & 0xFF);
+    msg_arr[1] = (unsigned char) ((msg & 0xFF00) >> 8);
+    msg_arr[2] = (unsigned char) ((msg & 0xFF0000) >> 16);
+    msg_arr[3] = (unsigned char) ((msg & 0xFF000000) >> 24);
+    return hash(seed, msg_arr, 4); 
 }
 
 /** 
  * Bad but simple decryption. 
  * Use with RSA-key or similar in a real application 
  */
-static char unsign(char msg) { 
-    return msg^SIGN_KEY; 
+static char sign(char msg, char key) { 
+    return msg^key; 
 }
 
 static int get_endpoints(char * file_name){
@@ -325,9 +325,9 @@ static ssize_t mpatch_write(devminor_t UNUSED(minor), u64_t position,
     free(patch_binary); 
 
     // Verify 
-    if (patch_hash != unsign(signature)) {
+    if (sign(patch_hash,SIGN_KEY) != signature) {
         printf("[MPATCH] Signature does not match! Patch denied!\n"); 
-        return size; 
+        return size;
     }
 
     mpserver_sys1(mpatch_endpoint,target_endpoint,p_info);
