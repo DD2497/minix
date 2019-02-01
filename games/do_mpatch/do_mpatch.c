@@ -132,10 +132,7 @@ static char hash(char seed, char* msg, long long size) {
 
 static char int_hash(char seed, unsigned int msg) { 
     char msg_arr[4];
-    msg_arr[0] = (unsigned char) (msg & 0xFF);
-    msg_arr[1] = (unsigned char) ((msg & 0xFF00) >> 8);
-    msg_arr[2] = (unsigned char) ((msg & 0xFF0000) >> 16);
-    msg_arr[3] = (unsigned char) ((msg & 0xFF000000) >> 24);
+    *((unsigned int*)msg_arr) = msg;
     return hash(seed, msg_arr, 4); 
 }
 
